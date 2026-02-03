@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (TikTok暴力修复版)
+powerfullz 的 Substore 订阅转换脚本 (全站硬编码版)
 https://github.com/powerfullz/override-rules
 
-修复日志：
-1. [TikTok] 不再依赖远程 RuleSet，直接硬编码所有 TikTok 核心域名，防止规则失效。
-2. [X/Google] 保持 X 和 Google 的修复状态。
-3. [DNS] 保持去毒 + 分流的高级配置。
+配置亮点：
+1. [硬编码] 抛弃不稳定的 Geosite，手动写死 Facebook/Insta/Netflix/Spotify/GitHub 等 100+ 个常用域名，保证 100% 走代理。
+2. [TikTok/X] 保持之前的暴力修复。
+3. [DNS] 保持去毒（不含 system）+ 分流策略。
+4. [功能] 链式代理、自动重命名、端口映射全部保留。
 */
 
 // ================= 1. 基础工具 =================
@@ -31,7 +32,7 @@ const ruleProviders = {
     Crypto: { type: "http", behavior: "classical", format: "text", interval: 86400, url: "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list", path: "./ruleset/Crypto.list" }
 };
 
-// ================= 4. 规则配置 (硬编码版) =================
+// ================= 4. 规则配置 (全站硬编码) =================
 const baseRules = [
     // 1. 阻断 QUIC
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
@@ -41,8 +42,37 @@ const baseRules = [
     `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
 
-    // 3. TikTok 暴力修复 (硬编码所有域名)
-    // 只要匹配到这些，绝对走代理，绝无漏网之鱼
+    // ================= 社交网络 =================
+    // Twitter / X
+    `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
+    // Facebook / Meta
+    `DOMAIN-SUFFIX,facebook.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,fbcdn.net,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,meta.com,${PROXY_GROUPS.SELECT}`,
+    // Instagram
+    `DOMAIN-SUFFIX,instagram.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,cdninstagram.com,${PROXY_GROUPS.SELECT}`,
+    // Telegram
+    `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,telegram.me,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.SELECT}`,
+    `IP-CIDR,91.108.4.0/22,${PROXY_GROUPS.SELECT},no-resolve`,
+    `IP-CIDR,91.108.56.0/22,${PROXY_GROUPS.SELECT},no-resolve`,
+    `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.SELECT},no-resolve`,
+    // Whatsapp / Discord / Reddit
+    `DOMAIN-SUFFIX,whatsapp.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,whatsapp.net,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discord.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discordapp.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,reddit.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,redd.it,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,redditmedia.com,${PROXY_GROUPS.SELECT}`,
+
+    // ================= 视频/流媒体 =================
+    // TikTok (暴力全覆盖)
     `DOMAIN-KEYWORD,tiktok,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.SELECT}`,
@@ -50,45 +80,81 @@ const baseRules = [
     `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ibyteimg.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ipstatp.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,muscdn.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,musical.ly,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,tiktok-d.com,${PROXY_GROUPS.SELECT}`,
-    
-    // 4. Twitter / X
-    `GEOSITE,TWITTER,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
+    // YouTube
+    `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
+    // Netflix / Disney / Spotify / Twitch
+    `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,nflxvideo.net,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,disneyplus.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,bamgrid.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,spotify.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,scdn.co,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twitch.tv,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ttvnw.net,${PROXY_GROUPS.SELECT}`,
+    // Pornhub (虽然不好意思但这是刚需)
+    `DOMAIN-SUFFIX,pornhub.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,phncdn.com,${PROXY_GROUPS.SELECT}`,
 
-    // 5. Google / AI
-    `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
+    // ================= AI 人工智能 =================
+    // OpenAI / ChatGPT
+    `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,oaiusercontent.com,${PROXY_GROUPS.SELECT}`,
+    // Google Gemini / Bard
+    `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`,
+    // Sora / Claude / Midjourney
+    `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,anthropic.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,claude.ai,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,midjourney.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`, // MJ 依赖 Discord
+
+    // ================= 极客/开发/工具 =================
+    // Google 全家桶
+    `DOMAIN-SUFFIX,google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, 
-    `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`, 
-    `GEOSITE,YOUTUBE,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,android.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,app-measurement.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,firebaseio.com,${PROXY_GROUPS.SELECT}`,
+    // GitHub / Microsoft
+    `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,github.io,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,stackoverflow.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,docker.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,v2ex.com,${PROXY_GROUPS.SELECT}`,
+    // Cloud / Wiki
+    `DOMAIN-SUFFIX,wikipedia.org,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,aws.amazon.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,cloudflare.com,${PROXY_GROUPS.SELECT}`,
 
-    // 6. 常用
-    `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,NETFLIX,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,TELEGRAM,${PROXY_GROUPS.SELECT}`,
-    
-    // 基础
+    // ================= 基础兜底 =================
+    // 广告拦截
     "RULE-SET,ADBlock,REJECT",
+    // 国内直连 (白名单机制)
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
     `RULE-SET,StaticResources,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN,services.googleapis.cn,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-KEYWORD,baidu,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-KEYWORD,alipay,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-KEYWORD,taobao,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-KEYWORD,tencent,${PROXY_GROUPS.DIRECT}`,
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
+    
+    // 剩下的全部走代理 (黑名单机制，确保不漏网)
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
@@ -105,7 +171,7 @@ function buildDnsConfig() {
         
         "default-nameserver": ["223.5.5.5", "119.29.29.29"],
         
-        // 绝不含 system
+        // 核心：只填国外 DNS
         nameserver: [
             "https://1.1.1.1/dns-query",
             "https://8.8.8.8/dns-query"
