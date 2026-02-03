@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (X/TikTok 终极修复版)
+powerfullz 的 Substore 订阅转换脚本 (去毒修复版)
 https://github.com/powerfullz/override-rules
 
-修复日志：
-1. [新增] Twitter (X) 专用规则，解决加载失败。
-2. [补全] TikTok 主域名规则，防止漏网。
-3. [DNS] 沿用 convert.min.js 的服务器列表，但注入 fallback-filter 以防止 DNS 污染。
-4. [功能] 保持链式代理、端口映射、重命名。
+修复核心：
+1. [DNS去毒] 移除了原配置中的 "system"，防止运营商 DNS 抢答造成污染。
+2. [X/Twitter] 新增完整 X 和 Twitter 规则，解决推特图片加载失败。
+3. [TikTok] 保持增强版 TikTok 规则。
+4. [功能] 保持自动重命名、链式代理、端口映射。
 */
 
 // ================= 1. 基础工具函数 =================
@@ -41,9 +41,9 @@ const ruleProviders = {
     Crypto: { type: "http", behavior: "classical", format: "text", interval: 86400, url: "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list", path: "./ruleset/Crypto.list" }
 };
 
-// ================= 4. 规则配置 (X & TikTok 修复版) =================
+// ================= 4. 规则配置 (X & TikTok & Google 修复) =================
 const baseRules = [
-    // 1. 阻断 QUIC (解决转圈)
+    // 1. 阻断 QUIC (UDP 443) - 手机端必须阻断
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
     
     // 2. DNS 防泄露核心
@@ -55,24 +55,25 @@ const baseRules = [
     // 3. Twitter / X 修复 (新增)
     `GEOSITE,TWITTER,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`, // 图片CDN
     `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`, // 短链接
 
-    // 4. TikTok 修复 (补全主域名)
+    // 4. TikTok 修复
     `RULE-SET,TikTok,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`, // 关键缺失
+    `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tik-tokapi.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-KEYWORD,tiktok,${PROXY_GROUPS.SELECT}`,
     
     // 5. Google / AI / YouTube
     `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, 
+    `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`, // 谷歌图片CDN
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, // YouTube头像
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`,
@@ -98,22 +99,27 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ================= 5. DNS 配置 (移植 + 防污染注入) =================
+// ================= 5. DNS 配置 (去毒优化版) =================
 function buildDnsConfig() {
     return {
         enable: true,
         ipv6: ipv6Enabled,
-        "prefer-h3": true,
-        "enhanced-mode": "fake-ip",
+        "prefer-h3": true, // 保持开启，但配合 UDP block
+        "enhanced-mode": "fake-ip", // 手机端推荐 Fake-IP
+        "fake-ip-range": "198.18.0.1/16",
         
-        // --- 移植自 convert.min.js ---
+        // --- 移植自文件 (剔除了 system) ---
         "default-nameserver": ["119.29.29.29", "223.5.5.5"],
+        
+        // 【关键修改】去掉了 "system"！
+        // 只保留阿里、腾讯、字节 DNS
         nameserver: [
-            "system",
             "223.5.5.5",
             "119.29.29.29",
             "180.184.1.1"
         ],
+        
+        // 保持原文件的 fallback 列表
         fallback: [
             "quic://dns0.eu",
             "https://dns.cloudflare.com/dns-query",
@@ -121,20 +127,21 @@ function buildDnsConfig() {
             "tcp://208.67.222.222",
             "tcp://8.26.56.2"
         ],
+        
         "proxy-server-nameserver": [
             "https://dns.alidns.com/dns-query",
             "tls://dot.pub"
         ],
-        // -----------------------------
+        // ------------------------------------
 
-        // 【关键修复】必须加这个！
-        // 否则 nameserver 里的国内 DNS 会抢答 TikTok/X 的查询，返回假 IP，导致无法连接。
+        // 强制开启防污染检查
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
             "ipcidr": ["240.0.0.0/4"]
         },
 
+        // 保持原文件的 fake-ip-filter
         "fake-ip-filter": [
             "geosite:private",
             "geosite:connectivity-check",
@@ -261,7 +268,7 @@ function main(e) {
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL", icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png", "include-all":true, type:"select", proxies:d});
 
-    // 3. 使用移植 + 修复后的 DNS
+    // 3. 注入去毒后的 DNS 配置
     const dnsConfig = buildDnsConfig();
 
     Object.assign(t, {
