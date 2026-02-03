@@ -1,16 +1,24 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (DNS防泄露优化版)
+powerfullz 的 Substore 订阅转换脚本 (DNS 零泄露修正版)
 https://github.com/powerfullz/override-rules
 
 修改说明：
-1. [DNS] 移除 system DNS，防止运营商泄露。
-2. [DNS] 启用 fallback-filter (GeoIP)，智能判断国内外解析，防止 DNS 污染。
-3. [DNS] 全面使用 DoH (https) 加密解析。
-4. 保持了你要求的“总分结构”：选择代理 -> [前置代理, 落地节点, ...]。
+1. [DNS 核心修复] 采用 nameserver-policy 策略。
+   - 默认 DNS：纯国外 (Google/CF)，走代理。保证防泄露测试全是国外 IP。
+   - 国内 DNS：仅 geosite:cn 走阿里/腾讯。
+2. [分组结构] 保持你要求的完美层级：选择代理 -> [前置/落地/手动/直连]。
+3. [兼容性] 修复了可能导致 Unexpected token 报错的语法细节。
 */
 
-// ================= 1. 核心底层 (保留勿动) =================
-const NODE_SUFFIX="节点";function parseBool(e){return"boolean"==typeof e?e:"string"==typeof e&&("true"===e.toLowerCase()||"1"===e)}function parseNumber(e,t=0){if(null==e)return t;const o=parseInt(e,10);return isNaN(o)?t:o}function buildFeatureFlags(e){const t=Object.entries({loadbalance:"loadBalance",landing:"landing",ipv6:"ipv6Enabled",full:"fullConfig",keepalive:"keepAliveEnabled",fakeip:"fakeIPEnabled",quic:"quicEnabled"}).reduce((t,[o,r])=>(t[r]=parseBool(e[o])||!1,t),{});return t.countryThreshold=parseNumber(e.threshold,0),t}const rawArgs="undefined"!=typeof $arguments?$arguments:{},{loadBalance:loadBalance,landing:landing,ipv6Enabled:ipv6Enabled,fullConfig:fullConfig,keepAliveEnabled:keepAliveEnabled,fakeIPEnabled:fakeIPEnabled,quicEnabled:quicEnabled,countryThreshold:countryThreshold}=buildFeatureFlags(rawArgs);function stripNodeSuffix(e){const t=new RegExp("节点$");return e.map(e=>e.replace(t,""))}const buildList=(...e)=>e.flat().filter(Boolean);
+// ================= 1. 核心底层 (保留) =================
+const NODE_SUFFIX="节点";
+function parseBool(e){return"boolean"==typeof e?e:"string"==typeof e&&("true"===e.toLowerCase()||"1"===e)}
+function parseNumber(e,t=0){if(null==e)return t;const o=parseInt(e,10);return isNaN(o)?t:o}
+function buildFeatureFlags(e){const t=Object.entries({loadbalance:"loadBalance",landing:"landing",ipv6:"ipv6Enabled",full:"fullConfig",keepalive:"keepAliveEnabled",fakeip:"fakeIPEnabled",quic:"quicEnabled"}).reduce((t,[o,r])=>(t[r]=parseBool(e[o])||!1,t),{});return t.countryThreshold=parseNumber(e.threshold,0),t}
+const rawArgs="undefined"!=typeof $arguments?$arguments:{};
+const {loadBalance,landing,ipv6Enabled,fullConfig,keepAliveEnabled,fakeIPEnabled,quicEnabled,countryThreshold}=buildFeatureFlags(rawArgs);
+function stripNodeSuffix(e){const t=new RegExp("节点$");return e.map(e=>e.replace(t,""))}
+const buildList=(...e)=>e.flat().filter(Boolean);
 
 // ================= 2. 组名定义 =================
 const PROXY_GROUPS={
@@ -22,7 +30,19 @@ const PROXY_GROUPS={
 };
 
 // ================= 3. 规则集 =================
-const ruleProviders={ADBlock:{type:"http",behavior:"domain",format:"mrs",interval:86400,url:"https://adrules.top/adrules-mihomo.mrs",path:"./ruleset/ADBlock.mrs"},SogouInput:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt",path:"./ruleset/SogouInput.txt"},StaticResources:{type:"http",behavior:"domain",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/domainset/cdn.txt",path:"./ruleset/StaticResources.txt"},CDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/cdn.txt",path:"./ruleset/CDNResources.txt"},TikTok:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/TikTok.list",path:"./ruleset/TikTok.list"},EHentai:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/EHentai.list",path:"./ruleset/EHentai.list"},SteamFix:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/SteamFix.list",path:"./ruleset/SteamFix.list"},GoogleFCM:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/FirebaseCloudMessaging.list",path:"./ruleset/FirebaseCloudMessaging.list"},AdditionalFilter:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalFilter.list",path:"./ruleset/AdditionalFilter.list"},AdditionalCDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalCDNResources.list",path:"./ruleset/AdditionalCDNResources.list"},Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}};
+const ruleProviders={
+    ADBlock:{type:"http",behavior:"domain",format:"mrs",interval:86400,url:"https://adrules.top/adrules-mihomo.mrs",path:"./ruleset/ADBlock.mrs"},
+    SogouInput:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt",path:"./ruleset/SogouInput.txt"},
+    StaticResources:{type:"http",behavior:"domain",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/domainset/cdn.txt",path:"./ruleset/StaticResources.txt"},
+    CDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/cdn.txt",path:"./ruleset/CDNResources.txt"},
+    TikTok:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/TikTok.list",path:"./ruleset/TikTok.list"},
+    EHentai:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/EHentai.list",path:"./ruleset/EHentai.list"},
+    SteamFix:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/SteamFix.list",path:"./ruleset/SteamFix.list"},
+    GoogleFCM:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/FirebaseCloudMessaging.list",path:"./ruleset/FirebaseCloudMessaging.list"},
+    AdditionalFilter:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalFilter.list",path:"./ruleset/AdditionalFilter.list"},
+    AdditionalCDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalCDNResources.list",path:"./ruleset/AdditionalCDNResources.list"},
+    Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}
+};
 
 // ================= 4. 规则重定向 =================
 const baseRules=[
@@ -65,49 +85,40 @@ const baseRules=[
 
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
-// ================= 5. DNS 配置 (核心优化区) =================
-// 强力优化版 DNS 配置
+// ================= 5. DNS 配置 (零泄露核心修改) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
+    // 强制使用 Fake-IP 以获得最佳防泄露效果
     const dns = {
         enable: true,
-        ipv6: ipv6Enabled,
-        "prefer-h3": true, // 尝试使用 HTTP/3 加速 DNS
-        "enhanced-mode": e, // 通常是 fake-ip
+        ipv6: false, // 关闭 IPv6 DNS 以防止 IPv6 泄露
+        "prefer-h3": true,
+        "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
-
-        // 1. 引导 DNS (用于解析 DoH 域名本身)
-        // 使用阿里和腾讯的普通 IP，仅用于建立 DoH 连接
-        "default-nameserver": [
-            "223.5.5.5",
-            "119.29.29.29"
-        ],
-
-        // 2. 主要 DNS (优先使用)
-        // 全部换成 DoH (加密 DNS)，防止运营商劫持和窥探
+        
+        // 1. 默认 Nameserver (只放国外!)
+        // 任何没匹配到 policy 的域名，都走这里。通过 Proxy 解析，彻底对 ISP 隐身。
         nameserver: [
-            "https://dns.alidns.com/dns-query", // 阿里 DoH
-            "https://doh.pub/dns-query"         // 腾讯 DoH
-        ],
-
-        // 3. 回退 DNS (国外/防污染)
-        // 当国内 DNS 解析结果异常(非 CN IP)时，使用这些
-        fallback: [
-            "https://dns.cloudflare.com/dns-query",
-            "https://dns.google/dns-query",
+            "https://8.8.8.8/dns-query",
             "https://1.1.1.1/dns-query"
         ],
+        
+        // 2. 策略分流 (Nameserver Policy)
+        // 只有国内域名才走国内 DNS (直连)
+        // 这需要 Clash Meta 内核支持
+        "nameserver-policy": {
+            "geosite:cn,private": [
+                "https://dns.alidns.com/dns-query",
+                "https://doh.pub/dns-query"
+            ]
+        },
 
-        // 4. 回退过滤器 (防泄露的核心)
-        // 逻辑：如果 nameserver 返回的 IP 是 CN (中国)，则通过；
-        // 如果不是 CN (可能是国外网站或污染 IP)，则强制使用 fallback 重新解析。
-        "fallback-filter": {
-            "geoip": true,
-            "geoip-code": "CN",
-            "ipcidr": ["240.0.0.0/4"],
-            "domain": ["+.google.com", "+.facebook.com", "+.youtube.com", "+.githubusercontent.com"]
-        }
+        // 3. 引导 DNS (用于解析上面 DoH 的域名)
+        "default-nameserver": [
+            "223.5.5.5", 
+            "119.29.29.29"
+        ]
     };
 
     if (t) {
@@ -118,8 +129,7 @@ function buildDnsConfig({mode:e, fakeIpFilter:t}) {
 
 const snifferConfig={sniff:{TLS:{ports:[443,8443]},HTTP:{ports:[80,8080,8880]},QUIC:{ports:[443,8443]}},"override-destination":!1,enable:!0,"force-dns-mapping":!0,"skip-domain":["Mijia Cloud","dlg.io.mi.com","+.push.apple.com"]};
 
-// 构建两种模式的 DNS
-const dnsConfig = buildDnsConfig({mode: "redir-host"});
+// 构建 Fake-IP 滤镜
 const dnsConfigFakeIp = buildDnsConfig({
     mode: "fake-ip",
     fakeIpFilter: [
@@ -135,6 +145,9 @@ const dnsConfigFakeIp = buildDnsConfig({
     ]
 });
 
+// 因为我们强制了 fake-ip 模式来防泄露，redir-host 配置其实可以复用
+const dnsConfig = dnsConfigFakeIp; 
+
 const geoxURL={geoip:"https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat",geosite:"https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat",mmdb:"https://gcore.jsdelivr.net/gh/Loyalsoldier/geoip@release/Country.mmdb",asn:"https://gcore.jsdelivr.net/gh/Loyalsoldier/geoip@release/GeoLite2-ASN.mmdb"};
 
 // 占位函数防报错
@@ -144,7 +157,7 @@ function parseCountries(e){return []}
 function buildCountryProxyGroups(e){return []}
 function buildBaseLists(e){return {defaultProxies:[]}}
 
-// ================= 6. 策略组生成 (层级逻辑) =================
+// ================= 6. 策略组生成 (完美层级) =================
 function buildProxyGroups(params){
     const { landing, defaultProxies: l } = params;
     
@@ -214,7 +227,7 @@ function buildProxyGroups(params){
 function main(e){
     const t = {proxies:e.proxies};
     
-    const u = buildProxyGroups({ landing: landing });
+    const u = buildProxyGroups({ landing: landing, defaultProxies: e.proxies.map(p=>p.name) });
 
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
@@ -230,7 +243,8 @@ function main(e){
         "rule-providers":ruleProviders,
         rules:g,
         sniffer:snifferConfig,
-        dns:fakeIPEnabled?dnsConfigFakeIp:dnsConfig,
+        // 这里强制使用我们配置好的 Anti-Leak DNS
+        dns: dnsConfigFakeIp,
         "geodata-mode":!0,
         "geox-url":geoxURL
     });
