@@ -1,12 +1,16 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (定制保留Landing版)
+powerfullz 的 Substore 订阅转换脚本 (前置代理+落地节点版)
 https://github.com/powerfullz/override-rules
 
 修改内容：
-1. 保留 landing (落地/家宽) 功能开关。
-2. 开启 landing 时，“选择代理”会自动排除落地节点，并单独生成“落地节点”组。
-3. 移除：所有国家分组、故障转移、静态、广告、低倍率。
-4. 修复 Unexpected token 报错问题。
+1. 必须开启参数 landing=true 才能看到效果。
+2. 分组结构：
+   - 前置代理 (排除落地节点)
+   - 落地节点 (只含落地节点)
+   - 选择代理 (包含所有，备用)
+   - 手动选择 (包含所有，备用)
+   - 直连
+3. 移除了所有国家、广告、静态等杂项分组。
 */
 
 // ================= 1. 核心底层函数 (完全保留，勿动) =================
@@ -15,7 +19,7 @@ const NODE_SUFFIX="节点";function parseBool(e){return"boolean"==typeof e?e:"st
 // ================= 2. 规则集定义 (完全保留) =================
 const ruleProviders={ADBlock:{type:"http",behavior:"domain",format:"mrs",interval:86400,url:"https://adrules.top/adrules-mihomo.mrs",path:"./ruleset/ADBlock.mrs"},SogouInput:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt",path:"./ruleset/SogouInput.txt"},StaticResources:{type:"http",behavior:"domain",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/domainset/cdn.txt",path:"./ruleset/StaticResources.txt"},CDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/cdn.txt",path:"./ruleset/CDNResources.txt"},TikTok:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/TikTok.list",path:"./ruleset/TikTok.list"},EHentai:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/EHentai.list",path:"./ruleset/EHentai.list"},SteamFix:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/SteamFix.list",path:"./ruleset/SteamFix.list"},GoogleFCM:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/FirebaseCloudMessaging.list",path:"./ruleset/FirebaseCloudMessaging.list"},AdditionalFilter:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalFilter.list",path:"./ruleset/AdditionalFilter.list"},AdditionalCDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalCDNResources.list",path:"./ruleset/AdditionalCDNResources.list"},Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}};
 
-// ================= 3. 规则重定向 (指向核心组) =================
+// ================= 3. 规则重定向 =================
 const baseRules=[
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
@@ -57,36 +61,35 @@ const baseRules=[
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
 // ================= 4. 基础配置 (完全保留) =================
-const snifferConfig={sniff:{TLS:{ports:[443,8443]},HTTP:{ports:[80,8080,8880]},QUIC:{ports:[443,8443]}},"override-destination":!1,enable:!0,"force-dns-mapping":!0,"skip-domain":["Mijia Cloud","dlg.io.mi.com","+.push.apple.com"]};function buildDnsConfig({mode:e,fakeIpFilter:t}){const o={enable:!0,ipv6:ipv6Enabled,"prefer-h3":!0,"enhanced-mode":e,"default-nameserver":["119.29.29.29","223.5.5.5"],nameserver:["system","223.5.5.5","119.29.29.29","180.184.1.1"],fallback:["quic://dns0.eu","https://dns.cloudflare.com/dns-query","https://dns.sb/dns-query","tcp://208.67.222.222","tcp://8.26.56.2"],"proxy-server-nameserver":["https://dns.alidns.com/dns-query","tls://dot.pub"]};return t&&(o["fake-ip-filter"]=t),o}const dnsConfig=buildDnsConfig({mode:"redir-host"}),dnsConfigFakeIp=buildDnsConfig({mode:"fake-ip",fakeIpFilter:["geosite:private","geosite:connectivity-check","geosite:cn","Mijia Cloud","dig.io.mi.com","localhost.ptlogin2.qq.com","*.icloud.com","*.stun.*.*","*.stun.*.*.*"]}),geoxURL={geoip:"https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat",geosite:"https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat",mmdb:"https://gcore.jsdelivr.net/gh/Loyalsoldier/geoip@release/Country.mmdb",asn:"https://gcore.jsdelivr.net/gh/Loyalsoldier/geoip@release/GeoLite2-ASN.mmdb"},countriesMeta={"香港":{pattern:"香港|港|HK|hk|Hong Kong|HongKong|hongkong|🇭🇰",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Hong_Kong.png"},"澳门":{pattern:"澳门|MO|Macau|🇲🇴",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Macao.png"},"台湾":{pattern:"台|新北|彰化|TW|Taiwan|🇹🇼",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Taiwan.png"},"新加坡":{pattern:"新加坡|坡|狮城|SG|Singapore|🇸🇬",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Singapore.png"},"日本":{pattern:"日本|川日|东京|大阪|泉日|埼玉|沪日|深日|JP|Japan|🇯🇵",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Japan.png"},"韩国":{pattern:"KR|Korea|KOR|首尔|韩|韓|🇰🇷",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Korea.png"},"美国":{pattern:"美国|美|US|United States|🇺🇸",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/United_States.png"},"加拿大":{pattern:"加拿大|Canada|CA|🇨🇦",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Canada.png"},"英国":{pattern:"英国|United Kingdom|UK|伦敦|London|🇬🇧",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/United_Kingdom.png"},"澳大利亚":{pattern:"澳洲|澳大利亚|AU|Australia|🇦🇺",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Australia.png"},"德国":{pattern:"德国|德|DE|Germany|🇩🇪",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Germany.png"},"法国":{pattern:"法国|法|FR|France|🇫🇷",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/France.png"},"俄罗斯":{pattern:"俄罗斯|俄|RU|Russia|🇷🇺",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Russia.png"},"泰国":{pattern:"泰国|泰|TH|Thailand|🇹🇭",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Thailand.png"},"印度":{pattern:"印度|IN|India|🇮🇳",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/India.png"},"马来西亚":{pattern:"马来西亚|马来|MY|Malaysia|🇲🇾",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Malaysia.png"}};
+const snifferConfig={sniff:{TLS:{ports:[443,8443]},HTTP:{ports:[80,8080,8880]},QUIC:{ports:[443,8443]}},"override-destination":!1,enable:!0,"force-dns-mapping":!0,"skip-domain":["Mijia Cloud","dlg.io.mi.com","+.push.apple.com"]};function buildDnsConfig({mode:e,fakeIpFilter:t}){const o={enable:!0,ipv6:ipv6Enabled,"prefer-h3":!0,"enhanced-mode":e,"default-nameserver":["119.29.29.29","223.5.5.5"],nameserver:["system","223.5.5.5","119.29.29.29","180.184.1.1"],fallback:["quic://dns0.eu","https://dns.cloudflare.com/dns-query","https://dns.sb/dns-query","tcp://208.67.222.222","tcp://8.26.56.2"],"proxy-server-nameserver":["https://dns.alidns.com/dns-query","tls://dot.pub"]};return t&&(o["fake-ip-filter"]=t),o}const dnsConfig=buildDnsConfig({mode:"redir-host"}),dnsConfigFakeIp=buildDnsConfig({mode:"fake-ip",fakeIpFilter:["geosite:private","geosite:connectivity-check","geosite:cn","Mijia Cloud","dig.io.mi.com","localhost.ptlogin2.qq.com","*.icloud.com","*.stun.*.*","*.stun.*.*.*"]}),geoxURL={geoip:"https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat",geosite:"https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat",mmdb:"https://gcore.jsdelivr.net/gh/Loyalsoldier/geoip@release/Country.mmdb",asn:"https://gcore.jsdelivr.net/gh/Loyalsoldier/geoip@release/GeoLite2-ASN.mmdb"},countriesMeta={"香港":{pattern:"香港|港|HK|hk|Hong Kong|HongKong|hongkong|🇭🇰",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Hong_Kong.png"}};
 
-// 这些函数保留但不会被实际调用，以防止ReferenceError
-function hasLowCost(e){const t=/0\.[0-5]|低倍率|省流|大流量|实验性/i;return(e.proxies||[]).some(e=>t.test(e.name))}
-function parseCountries(e){const t=e.proxies||[],o=/家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|落地/i,r=Object.create(null),n={};for(const[e,t]of Object.entries(countriesMeta))n[e]=new RegExp(t.pattern.replace(/^\(\?i\)/,""));for(const e of t){const t=e.name||"";if(!o.test(t))for(const[e,o]of Object.entries(n))if(o.test(t)){r[e]=(r[e]||0)+1;break}}const s=[];for(const[e,t]of Object.entries(r))s.push({country:e,count:t});return s}
-function buildCountryProxyGroups(e){return []} // 强制返回空数组，不生成国家组
+// 保留函数定义防报错
+function hasLowCost(e){return false}
+function parseCountries(e){return []}
+function buildCountryProxyGroups(e){return []}
 
-// ================= 5. 策略组生成 (重点逻辑) =================
+// ================= 5. 策略组生成 (核心修改) =================
 function buildProxyGroups(params){
-    // 从参数中解构我们需要的变量
-    // l: 默认代理列表 (包含所有节点)
     const { landing, defaultProxies: l } = params;
     
     const groups = [];
 
-    // 1. 生成 [选择代理]
-    // 逻辑：如果开启 landing，这个组自动排除家宽节点（作为前置）；如果不开启，则包含所有节点。
     // 正则匹配家宽/星链等关键词
     const landingRegex = "(?i)家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|落地";
 
-    groups.push({
-        name: PROXY_GROUPS.SELECT,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Proxy.png",
-        type: "select",
-        "include-all": true,
-        // 核心修改：如果 landing=true，排除掉落地节点；否则不排除
-        "exclude-filter": landing ? landingRegex : undefined
-    });
+    // 1. 生成 [前置代理] (核心需求)
+    // 只有当 landing=true 时才生成，且排除掉落地节点
+    if (landing) {
+        groups.push({
+            name: "前置代理", // 你要求的组名
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
+            type: "select",
+            "include-all": true,
+            "exclude-filter": landingRegex // 排除落地节点
+        });
+    }
 
-    // 2. 生成 [落地节点] (仅当开启 landing 参数时)
+    // 2. 生成 [落地节点]
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
@@ -97,7 +100,16 @@ function buildProxyGroups(params){
         });
     }
 
-    // 3. 生成 [手动选择] (包含所有节点，备用)
+    // 3. 生成 [选择代理]
+    // 包含所有节点（作为通用出口）
+    groups.push({
+        name: PROXY_GROUPS.SELECT,
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Proxy.png",
+        type: "select",
+        "include-all": true
+    });
+
+    // 4. 生成 [手动选择]
     groups.push({
         name: PROXY_GROUPS.MANUAL,
         icon: "https://gcore.jsdelivr.net/gh/shindgewongxj/WHATSINStash@master/icon/select.png",
@@ -105,7 +117,7 @@ function buildProxyGroups(params){
         type: "select"
     });
 
-    // 4. 生成 [直连]
+    // 5. 生成 [直连]
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png",
@@ -116,22 +128,16 @@ function buildProxyGroups(params){
     return groups;
 }
 
-// ================= 6. 主程序 (入口) =================
+// ================= 6. 主程序 =================
 function main(e){
-    // 获取默认节点列表 l
-    // 我们保留 buildBaseLists 调用以防报错，并获取 l 变量
     const t = {proxies:e.proxies};
-    const {defaultProxies:l} = buildBaseLists({landing:landing, lowCost:false, countryGroupNames:[]});
-
-    // 调用我们自定义的极简分组函数
-    // 传入 landing 开关 和 所有节点列表 l
+    
+    // 调用分组生成
     const u = buildProxyGroups({ landing: landing, defaultProxies: e.proxies.map(p=>p.name) });
 
-    // 添加 GLOBAL 组
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
 
-    // 生成规则
     const g = buildRules({quicEnabled:quicEnabled});
 
     if(fullConfig){
