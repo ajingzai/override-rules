@@ -1,12 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (链式代理自动化版)
+powerfullz 的 Substore 订阅转换脚本 (链式代理·显性修复版)
 https://github.com/powerfullz/override-rules
 
-新增功能：
-1. [自动化] 自动识别“落地/家宽”节点，并强制注入 dialer-proxy: "前置代理"。
-   - 效果：所有家宽节点会自动通过“前置代理”组中转，不再直连。
-2. [非TUN优化] 保持 Fake-IP 和 System Proxy 优化。
-3. [防泄露] 保持 DoH 防劫持。
+修复：
+1. [可视化] 被链式处理的节点，名字后会自动追加 " -> 前置"，证明脚本生效。
+2. [逻辑修正] 确保改名后的节点能正确被策略组引用。
+3. [强制注入] 确保 dialer-proxy 参数写入配置。
 */
 
 // ================= 1. 核心底层 =================
@@ -32,34 +31,29 @@ const ruleProviders={
 
 // ================= 4. 规则配置 =================
 const baseRules=[
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC
+    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
     
-    // GitHub 加速
     `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
     
-    // Google & Gemini 修复
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
 
-    // Sora & OpenAI
     `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
 
-    // YouTube 修复
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
 
-    // 基础规则
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
@@ -126,6 +120,7 @@ function buildProxyGroups(params){
     const groups = [];
     const landingRegex = "(?i)家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|落地";
 
+    // 1. 选择代理
     const selectProxies = landing ? [PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"] : [];
     const selectGroup = {
         name: PROXY_GROUPS.SELECT,
@@ -136,16 +131,21 @@ function buildProxyGroups(params){
     if (!landing) selectGroup["include-all"] = true;
     groups.push(selectGroup);
 
+    // 2. 落地 & 前置
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
-            type: "select", "include-all": true, "exclude-filter": landingRegex
+            type: "select", 
+            "include-all": true, 
+            "exclude-filter": " -> 前置" // 前置组里排除掉那些已经被标记为“前置”的节点，防止循环
         });
         groups.push({
             name: PROXY_GROUPS.LANDING,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
-            type: "select", "include-all": true, filter: landingRegex
+            type: "select", 
+            "include-all": true, 
+            filter: " -> 前置" // 落地组里只显示被标记的节点
         });
     }
 
@@ -158,30 +158,30 @@ function buildProxyGroups(params){
 function main(e){
     let finalProxies = e.proxies;
     
-    // 【核心注入逻辑】
-    // 如果开启了 landing，自动遍历所有节点
-    // 凡是符合“家宽/落地”正则的，强行加入 dialer-proxy 参数
+    // 【核心注入 + 改名逻辑】
     if (landing) {
         const landingRegRaw = "家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|落地";
         const landingRegExp = new RegExp(landingRegRaw, "i");
         
         finalProxies = finalProxies.map(p => {
             if (landingRegExp.test(p.name)) {
-                // 这是一个落地节点，我们给它装上“前置代理”
                 return {
                     ...p,
-                    "dialer-proxy": PROXY_GROUPS.FRONT // "前置代理"
+                    // 1. 注入前置代理
+                    "dialer-proxy": PROXY_GROUPS.FRONT, 
+                    // 2. 【关键】改名，加个后缀，这样你在界面上能直接看到它变了
+                    name: `${p.name} -> 前置` 
                 };
             }
             return p;
         });
     }
 
-    const t = {proxies:e.proxies}; // 注意：Clash 配置里的 proxies 列表通常不需要包含 dialer-proxy 字段，
-    // 但是！Clash Meta 的逻辑是，如果节点对象里有 dialer-proxy，它就会生效。
-    // 所以我们需要把 finalProxies 赋值回去
+    const t = {proxies:e.proxies};
+    // 覆盖旧节点列表
     t.proxies = finalProxies;
 
+    // 传入修改过名字的列表给 Group 生成器
     const u = buildProxyGroups({ landing: landing, defaultProxies: finalProxies.map(p=>p.name) });
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
