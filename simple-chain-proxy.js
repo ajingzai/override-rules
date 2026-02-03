@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (DNS还原版)
+powerfullz 的 Substore 订阅转换脚本 (X/TikTok 终极修复版)
 https://github.com/powerfullz/override-rules
 
-配置变更：
-1. [DNS] 严格移植自 convert.min.js，包含 quic:// 和 tcp:// 等 Fallback 配置。
-2. [规则] 保持 GCM 修复和 TikTok 增强。
-3. [功能] 保持自动重命名、链式代理、端口映射。
+修复日志：
+1. [新增] Twitter (X) 专用规则，解决加载失败。
+2. [补全] TikTok 主域名规则，防止漏网。
+3. [DNS] 沿用 convert.min.js 的服务器列表，但注入 fallback-filter 以防止 DNS 污染。
+4. [功能] 保持链式代理、端口映射、重命名。
 */
 
 // ================= 1. 基础工具函数 =================
@@ -19,7 +20,7 @@ function parseBool(val) {
 
 const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing);
-const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false; // 获取 ipv6 参数，默认关闭
+const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
 // ================= 2. 组名定义 =================
 const PROXY_GROUPS = {
@@ -40,24 +41,33 @@ const ruleProviders = {
     Crypto: { type: "http", behavior: "classical", format: "text", interval: 86400, url: "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list", path: "./ruleset/Crypto.list" }
 };
 
-// ================= 4. 规则配置 (保持不报错版) =================
+// ================= 4. 规则配置 (X & TikTok 修复版) =================
 const baseRules = [
-    // 阻断 QUIC
+    // 1. 阻断 QUIC (解决转圈)
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
     
-    // DNS 防泄露核心 (Google DNS 强制代理)
+    // 2. DNS 防泄露核心
     `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
     `DOMAIN,cloudflare-dns.com,${PROXY_GROUPS.SELECT}`,
 
-    // TikTok (规则集优先)
+    // 3. Twitter / X 修复 (新增)
+    `GEOSITE,TWITTER,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
+
+    // 4. TikTok 修复 (补全主域名)
     `RULE-SET,TikTok,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`, // 关键缺失
     `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,tik-tokapi.com,${PROXY_GROUPS.SELECT}`,
     
-    // Google / AI / YouTube
+    // 5. Google / AI / YouTube
     `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
@@ -73,7 +83,7 @@ const baseRules = [
     `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`, 
     `GEOSITE,YOUTUBE,${PROXY_GROUPS.SELECT}`,
 
-    // 常用
+    // 6. 常用
     `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,NETFLIX,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,TELEGRAM,${PROXY_GROUPS.SELECT}`,
@@ -88,13 +98,15 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ================= 5. DNS 配置 (100% 移植自 convert.min.js) =================
-function buildDnsConfig({ mode: e, fakeIpFilter: t }) {
-    const o = {
+// ================= 5. DNS 配置 (移植 + 防污染注入) =================
+function buildDnsConfig() {
+    return {
         enable: true,
-        ipv6: ipv6Enabled, // 继承参数
+        ipv6: ipv6Enabled,
         "prefer-h3": true,
-        "enhanced-mode": e,
+        "enhanced-mode": "fake-ip",
+        
+        // --- 移植自 convert.min.js ---
         "default-nameserver": ["119.29.29.29", "223.5.5.5"],
         nameserver: [
             "system",
@@ -112,26 +124,30 @@ function buildDnsConfig({ mode: e, fakeIpFilter: t }) {
         "proxy-server-nameserver": [
             "https://dns.alidns.com/dns-query",
             "tls://dot.pub"
+        ],
+        // -----------------------------
+
+        // 【关键修复】必须加这个！
+        // 否则 nameserver 里的国内 DNS 会抢答 TikTok/X 的查询，返回假 IP，导致无法连接。
+        "fallback-filter": {
+            "geoip": true,
+            "geoip-code": "CN",
+            "ipcidr": ["240.0.0.0/4"]
+        },
+
+        "fake-ip-filter": [
+            "geosite:private",
+            "geosite:connectivity-check",
+            "geosite:cn",
+            "Mijia Cloud",
+            "dig.io.mi.com",
+            "localhost.ptlogin2.qq.com",
+            "*.icloud.com",
+            "*.stun.*.*",
+            "*.stun.*.*.*"
         ]
     };
-    return t && (o["fake-ip-filter"] = t), o;
 }
-
-// 实例化 DNS 配置 (使用文件中的列表)
-const dnsConfigFakeIp = buildDnsConfig({
-    mode: "fake-ip",
-    fakeIpFilter: [
-        "geosite:private",
-        "geosite:connectivity-check",
-        "geosite:cn",
-        "Mijia Cloud",
-        "dig.io.mi.com", // 保持原文件写法
-        "localhost.ptlogin2.qq.com",
-        "*.icloud.com",
-        "*.stun.*.*",
-        "*.stun.*.*.*"
-    ]
-});
 
 const snifferConfig = {
     enable: true,
@@ -245,6 +261,9 @@ function main(e) {
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL", icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png", "include-all":true, type:"select", proxies:d});
 
+    // 3. 使用移植 + 修复后的 DNS
+    const dnsConfig = buildDnsConfig();
+
     Object.assign(t, {
         "mixed-port": 7890,
         "allow-lan": true,
@@ -258,8 +277,7 @@ function main(e) {
         "rule-providers": ruleProviders,
         rules: baseRules,
         sniffer: snifferConfig,
-        // 使用来自文件的 DNS 配置
-        dns: dnsConfigFakeIp,
+        dns: dnsConfig,
         "geodata-mode": true,
         "geox-url": {
             geoip: "https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat",
