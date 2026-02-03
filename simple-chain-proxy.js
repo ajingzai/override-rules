@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (融合版)
+powerfullz 的 Substore 订阅转换脚本 (DNS还原版)
 https://github.com/powerfullz/override-rules
 
-配置说明：
-1. [DNS] 移植自 convert.min.js，使用 system/阿里/腾讯 作为主 DNS，Cloudflare/OpenDNS 作为 Fallback。
-2. [规则] 修复了 GCM 报错，增强了 TikTok/Google 覆盖。
-3. [功能] 保留链式代理、重命名、端口映射。
+配置变更：
+1. [DNS] 严格移植自 convert.min.js，包含 quic:// 和 tcp:// 等 Fallback 配置。
+2. [规则] 保持 GCM 修复和 TikTok 增强。
+3. [功能] 保持自动重命名、链式代理、端口映射。
 */
 
 // ================= 1. 基础工具函数 =================
@@ -19,6 +19,7 @@ function parseBool(val) {
 
 const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing);
+const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false; // 获取 ipv6 参数，默认关闭
 
 // ================= 2. 组名定义 =================
 const PROXY_GROUPS = {
@@ -39,7 +40,7 @@ const ruleProviders = {
     Crypto: { type: "http", behavior: "classical", format: "text", interval: 86400, url: "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list", path: "./ruleset/Crypto.list" }
 };
 
-// ================= 4. 规则配置 (移除报错项) =================
+// ================= 4. 规则配置 (保持不报错版) =================
 const baseRules = [
     // 阻断 QUIC
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
@@ -56,7 +57,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.SELECT}`,
     
-    // Google / AI / YouTube (移除了报错的 GEOSITE,GCM)
+    // Google / AI / YouTube
     `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
@@ -87,15 +88,13 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ================= 5. DNS 配置 (移植自 convert.min.js) =================
-function buildDnsConfig() {
-    return {
+// ================= 5. DNS 配置 (100% 移植自 convert.min.js) =================
+function buildDnsConfig({ mode: e, fakeIpFilter: t }) {
+    const o = {
         enable: true,
-        ipv6: false, // 强制关闭 IPv6 以防转圈
+        ipv6: ipv6Enabled, // 继承参数
         "prefer-h3": true,
-        "enhanced-mode": "fake-ip",
-        
-        // --- 以下完全复刻自你提供的文件 ---
+        "enhanced-mode": e,
         "default-nameserver": ["119.29.29.29", "223.5.5.5"],
         nameserver: [
             "system",
@@ -113,22 +112,26 @@ function buildDnsConfig() {
         "proxy-server-nameserver": [
             "https://dns.alidns.com/dns-query",
             "tls://dot.pub"
-        ],
-        // ------------------------------------
-
-        "fake-ip-filter": [
-            "geosite:private",
-            "geosite:connectivity-check",
-            "geosite:cn",
-            "Mijia Cloud",
-            "dig.io.mi.com", // 注意原文件这里是 dig 不是 dlg，我照搬了
-            "localhost.ptlogin2.qq.com",
-            "*.icloud.com",
-            "*.stun.*.*",
-            "*.stun.*.*.*"
         ]
     };
+    return t && (o["fake-ip-filter"] = t), o;
 }
+
+// 实例化 DNS 配置 (使用文件中的列表)
+const dnsConfigFakeIp = buildDnsConfig({
+    mode: "fake-ip",
+    fakeIpFilter: [
+        "geosite:private",
+        "geosite:connectivity-check",
+        "geosite:cn",
+        "Mijia Cloud",
+        "dig.io.mi.com", // 保持原文件写法
+        "localhost.ptlogin2.qq.com",
+        "*.icloud.com",
+        "*.stun.*.*",
+        "*.stun.*.*.*"
+    ]
+});
 
 const snifferConfig = {
     enable: true,
@@ -242,13 +245,10 @@ function main(e) {
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL", icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png", "include-all":true, type:"select", proxies:d});
 
-    // 3. 使用移植的 DNS 配置
-    const dnsConfig = buildDnsConfig();
-
     Object.assign(t, {
         "mixed-port": 7890,
         "allow-lan": true,
-        ipv6: false, 
+        ipv6: ipv6Enabled, 
         mode: "rule",
         "unified-delay": true,
         "tcp-concurrent": true,
@@ -258,7 +258,8 @@ function main(e) {
         "rule-providers": ruleProviders,
         rules: baseRules,
         sniffer: snifferConfig,
-        dns: dnsConfig, // 这里用了新的 DNS
+        // 使用来自文件的 DNS 配置
+        dns: dnsConfigFakeIp,
         "geodata-mode": true,
         "geox-url": {
             geoip: "https://gcore.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat",
