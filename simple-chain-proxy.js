@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (UI修复+防泄露终极版)
+powerfullz 的 Substore 订阅转换脚本 (非TUN/系统代理专用版)
 https://github.com/powerfullz/override-rules
 
-修复内容：
-1. [UI修复] 显式强制 Google 静态资源 (gstatic/googleapis) 走代理，解决 Gemini 乱码/变样。
-2. [TUN优化] 维持电脑端 TUN 模式配置。
-3. [防泄露] 维持 DoH 强制代理策略。
+优化重点：
+1. [轻量化] 移除 TUN 模式，仅依赖 System Proxy，对系统零侵入。
+2. [极速] 强制 Fake-IP 模式，跳过 Windows 本地 DNS 解析步骤，解决“慢”的问题。
+3. [稳定] 阻断 QUIC，修复 Gemini/Sora 转圈。
+4. [防泄露] 虽然不开 TUN，但在 Clash 内部使用 DoH 代理远程解析，确保浏览器内不泄露。
 */
 
 // ================= 1. 核心底层 =================
@@ -29,28 +30,33 @@ const ruleProviders={
     Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}
 };
 
-// ================= 4. 规则配置 (UI 修复区) =================
+// ================= 4. 规则配置 (非TUN优化) =================
 const baseRules=[
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC
-    `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
-    `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
+    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC，强迫浏览器走 TCP 代理
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN,cloudflare-dns.com,${PROXY_GROUPS.SELECT}`,
     
-    // 【新增】Google 静态资源强制代理 (解决 Gemini 乱码)
+    // GitHub 加速
+    `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
+    
+    // Google & Gemini 修复
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,app-measurement.com,${PROXY_GROUPS.SELECT}`,
-
-    // AI & Media 修复
-    `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
+
+    // Sora & OpenAI
+    `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
+
+    // YouTube 修复
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
 
     // 基础规则
@@ -91,39 +97,43 @@ const baseRules=[
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ================= 5. DNS 配置 =================
+// ================= 5. DNS 配置 (非TUN模式专用) =================
+// 逻辑：因为没有TUN，我们无法劫持系统流量。
+// 我们依赖 Fake-IP 模式，让 Clash 瞬间接管浏览器请求。
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     return {
         enable: true,
-        ipv6: false, 
-        "prefer-h3": true,
-        "enhanced-mode": "fake-ip",
+        ipv6: false, // 强关 IPv6 解析，防止回退延迟
+        "prefer-h3": false,
+        "enhanced-mode": "fake-ip", // 必须是 fake-ip，这让非TUN模式也能很快
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
+        
+        // 节点域名解析专用 (国内UDP)
         "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29"],
-        nameserver: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
+
+        // 内部解析用 (国外DoH)
+        // 虽然系统不走这个，但 Clash 接管流量后需要用这个去远端解析
+        nameserver: [
+            "https://8.8.8.8/dns-query",
+            "https://1.1.1.1/dns-query"
+        ],
+        
+        // 国内域名策略 (国内UDP直连，提速)
         "nameserver-policy": {
-            "geosite:cn,private,apple,huawei,xiaomi": ["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"]
+            "geosite:cn,private,apple,huawei,xiaomi": ["223.5.5.5", "119.29.29.29"]
         },
+
         fallback: [],
         "fallback-filter": { "geoip": true, "geoip-code": "CN", "ipcidr": ["240.0.0.0/4"] },
         "fake-ip-filter": t
     };
 }
 
-// ================= 6. TUN 配置 =================
-const tunConfig = {
-    enable: true,
-    stack: "system",
-    "auto-route": true,
-    "auto-detect-interface": true,
-    "dns-hijack": ["any:53"]
-};
-
 const snifferConfig={sniff:{TLS:{ports:[443,8443]},HTTP:{ports:[80,8080,8880]},QUIC:{ports:[443,8443]}},"override-destination":!1,enable:!0,"force-dns-mapping":!0,"skip-domain":["Mijia Cloud","dlg.io.mi.com","+.push.apple.com"]};
 
-// ================= 7. 策略组生成 =================
+// ================= 6. 策略组生成 =================
 function buildProxyGroups(params){
     const { landing, defaultProxies: l } = params;
     const groups = [];
@@ -157,7 +167,7 @@ function buildProxyGroups(params){
     return groups;
 }
 
-// ================= 8. 主程序 =================
+// ================= 7. 主程序 =================
 function main(e){
     const t = {proxies:e.proxies};
     const u = buildProxyGroups({ landing: landing, defaultProxies: e.proxies.map(p=>p.name) });
@@ -177,7 +187,7 @@ function main(e){
         "unified-delay": true,
         "tcp-concurrent": true,
         "global-client-fingerprint": "chrome",
-        tun: tunConfig, 
+        // 移除了 TUN 配置，只保留最基础的
         "proxy-groups":u,
         "rule-providers":ruleProviders,
         rules: baseRules,
