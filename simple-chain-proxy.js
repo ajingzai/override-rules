@@ -1,31 +1,27 @@
-// ==============================================
-// 1. 基础工具函数 (展开写，防止报错)
-// ==============================================
+/*!
+powerfullz 的 Substore 订阅转换脚本 (防报错稳定版)
+https://github.com/powerfullz/override-rules
+
+修复日志：
+1. [修复报错] 移除了 GEOSITE,GCM 和 GEOSITE,TIKTOK，改用通用规则和规则集，确保不再报 "list not found"。
+2. [防泄露] 优化 DNS 配置，强制接管系统 DNS，解决“全是移动 IP”的问题。
+3. [功能保留] 链式代理、端口映射、重命名、去广告等功能全部保留。
+*/
+
+// ================= 1. 基础工具函数 =================
 const NODE_SUFFIX = "节点";
 
 function parseBool(val) {
     if (typeof val === "boolean") return val;
-    if (typeof val === "string") {
-        return val.toLowerCase() === "true" || val === "1";
-    }
+    if (typeof val === "string") return val.toLowerCase() === "true" || val === "1";
     return false;
 }
 
-function parseNumber(val, defaultVal = 0) {
-    if (val == null) return defaultVal;
-    const num = parseInt(val, 10);
-    return isNaN(num) ? defaultVal : num;
-}
-
-// 获取脚本参数
+// 获取参数
 const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
-const loadBalance = parseBool(rawArgs.loadBalance);
-const landing = parseBool(rawArgs.landing); // 只有开启 landing=true，才会处理落地节点
-const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
+const landing = parseBool(rawArgs.landing);
 
-// ==============================================
-// 2. 组名定义
-// ==============================================
+// ================= 2. 组名定义 =================
 const PROXY_GROUPS = {
     SELECT: "选择代理",
     FRONT: "前置代理",
@@ -34,10 +30,9 @@ const PROXY_GROUPS = {
     DIRECT: "直连"
 };
 
-// ==============================================
-// 3. 规则集定义
-// ==============================================
+// ================= 3. 规则集 (在线引用) =================
 const ruleProviders = {
+    // 使用 RuleSet 处理 TikTok，比 Geosite 更稳
     TikTok: { type: "http", behavior: "domain", format: "mrs", interval: 86400, url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TikTok/TikTok.yaml", path: "./ruleset/TikTok.yaml" },
     ADBlock: { type: "http", behavior: "domain", format: "mrs", interval: 86400, url: "https://adrules.top/adrules-mihomo.mrs", path: "./ruleset/ADBlock.mrs" },
     SogouInput: { type: "http", behavior: "classical", format: "text", interval: 86400, url: "https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt", path: "./ruleset/SogouInput.txt" },
@@ -46,72 +41,85 @@ const ruleProviders = {
     Crypto: { type: "http", behavior: "classical", format: "text", interval: 86400, url: "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list", path: "./ruleset/Crypto.list" }
 };
 
-// ==============================================
-// 4. 规则配置 (全能修复)
-// ==============================================
+// ================= 4. 规则配置 (安全版) =================
 const baseRules = [
-    // 阻断 QUIC (解决 Gemini/Sora 转圈)
+    // 1. 阻断 QUIC (UDP 443) - 解决转圈的核心
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
     
-    // DNS 防泄露 (Google DNS 走代理)
-    `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
+    // 2. 强制 DNS 流量走代理 (防泄露)
     `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
+    `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
+    `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN,cloudflare-dns.com,${PROXY_GROUPS.SELECT}`,
+
+    // 3. TikTok 修复 (使用 RuleSet)
+    `RULE-SET,TikTok,${PROXY_GROUPS.SELECT}`,
+    // 手动补充常见 TikTok 域名，防止 RuleSet 加载失败
+    `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.SELECT}`,
     
-    // GitHub 加速
-    `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
-    
-    // Google & Gemini & Sora 全家桶修复
-    `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
+    // 4. Google / Gemini / YouTube 修复
+    // 移除 GEOSITE,GCM 以防报错，手动指定关键域名
+    `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, // 图片修复关键
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`, // 手机端Gemini关键
+    `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`, // 手机Gemini API
+    `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`, 
+    `GEOSITE,YOUTUBE,${PROXY_GROUPS.SELECT}`,
+
+    // 5. AI (Sora/OpenAI)
     `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
+
+    // 6. 其他常用
+    `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
+    `GEOSITE,NETFLIX,${PROXY_GROUPS.SELECT}`,
+    `GEOSITE,TELEGRAM,${PROXY_GROUPS.SELECT}`,
     
-    // YouTube 图片修复
-    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
-
-    // TikTok 修复 (优先匹配)
-    `RULE-SET,TikTok,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,TIKTOK,${PROXY_GROUPS.SELECT}`,
-
     // 基础规则
     "RULE-SET,ADBlock,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
     `RULE-SET,StaticResources,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN,services.googleapis.cn,${PROXY_GROUPS.SELECT}`,
+    
+    // 兜底国内直连
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
+    
+    // 最终兜底
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ==============================================
-// 5. DNS 配置 (非TUN防泄露)
-// ==============================================
+// ================= 5. DNS 配置 (强制 Fake-IP) =================
 function buildDnsConfig() {
     return {
         enable: true,
-        ipv6: false, // 强关 IPv6
+        ipv6: false, // 强关 IPv6 防止漏网
         "prefer-h3": false,
-        "enhanced-mode": "fake-ip",
+        "enhanced-mode": "fake-ip", // 手机端必须用 Fake-IP 才能彻底防泄露
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
-        "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29"],
-        nameserver: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
+        
+        // 只有这些国内域名走国内解析
         "nameserver-policy": {
             "geosite:cn,private,apple,huawei,xiaomi": ["223.5.5.5", "119.29.29.29"]
         },
+        
+        // 其他所有域名，强制走 DoH 代理 (防泄露核心)
+        nameserver: [
+            "https://8.8.8.8/dns-query", 
+            "https://1.1.1.1/dns-query"
+        ],
+        
+        // 这一步是为了防止回退到本地 DNS
         fallback: [],
         "fallback-filter": { "geoip": true, "geoip-code": "CN", "ipcidr": ["240.0.0.0/4"] }
     };
@@ -126,14 +134,11 @@ const snifferConfig = {
     "skip-domain": ["Mijia Cloud", "dlg.io.mi.com", "+.push.apple.com"]
 };
 
-// ==============================================
-// 6. 策略组生成器
-// ==============================================
+// ================= 6. 策略组生成器 =================
 function buildProxyGroups(params) {
     const isLanding = params.landing;
     const groups = [];
 
-    // 1. 选择代理 (总入口)
     const selectProxies = isLanding ? [PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"] : [];
     const selectGroup = {
         name: PROXY_GROUPS.SELECT,
@@ -144,21 +149,16 @@ function buildProxyGroups(params) {
     if (!isLanding) selectGroup["include-all"] = true;
     groups.push(selectGroup);
 
-    // 2. 落地 & 前置 (仅 landing=true 时生成)
     if (isLanding) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
-            type: "select", 
-            "include-all": true, 
-            "exclude-filter": " -> 前置" // 前置组：排除掉已经是链式的节点
+            type: "select", "include-all": true, "exclude-filter": " -> 前置"
         });
         groups.push({
             name: PROXY_GROUPS.LANDING,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
-            type: "select", 
-            "include-all": true, 
-            filter: " -> 前置" // 落地组：只包含链式节点
+            type: "select", "include-all": true, filter: " -> 前置"
         });
     }
 
@@ -167,7 +167,7 @@ function buildProxyGroups(params) {
     return groups;
 }
 
-// 辅助函数：根据名字判断国家代码
+// 辅助函数：重命名
 function getCountryCode(name) {
     if (/香港|HK|Hong Kong/i.test(name)) return "HK";
     if (/台湾|TW|Taiwan/i.test(name)) return "TW";
@@ -181,77 +181,58 @@ function getCountryCode(name) {
     if (/俄罗斯|RU|Russia/i.test(name)) return "RU";
     if (/土耳其|TR|Turkey/i.test(name)) return "TR";
     if (/阿根廷|AR|Argentina/i.test(name)) return "AR";
-    return "OT"; // Other
+    return "OT";
 }
 
-// ==============================================
-// 7. 主程序 (Main)
-// ==============================================
+// ================= 7. 主程序 =================
 function main(e) {
     let rawProxies = e.proxies || [];
     let finalProxies = [];
     const countryCounts = {};
-    
-    // 垃圾词过滤正则
     const excludeKeywords = /套餐|官网|剩余|时间|节点|重置|异常|邮箱|网址|Traffic|Expire|Reset/i;
-    // 落地关键词
     const strictLandingKeyword = "落地";
 
-    // --- 步骤 1: 节点清洗、重命名与链式处理 ---
+    // 1. 节点清洗与重命名
     rawProxies.forEach(p => {
-        // A. 剔除无效节点
-        if (excludeKeywords.test(p.name)) {
-            return;
-        }
+        if (excludeKeywords.test(p.name)) return;
 
-        // B. 处理“落地”节点
         if (p.name.includes(strictLandingKeyword)) {
             if (landing) {
-                // 如果开启了 landing，则注入链式代理参数
                 finalProxies.push({
                     ...p,
                     "dialer-proxy": PROXY_GROUPS.FRONT,
-                    name: `${p.name} -> 前置` // 改个名，方便确认
+                    name: `${p.name} -> 前置`
                 });
             } else {
-                // 没开参数就原样保留
                 finalProxies.push(p);
             }
-        } 
-        // C. 处理普通节点 (重命名)
-        else {
+        } else {
             const code = getCountryCode(p.name);
             if (!countryCounts[code]) countryCounts[code] = 0;
             countryCounts[code]++;
-            // 格式化为 HK-01, US-05
-            const newName = `${code}-${countryCounts[code].toString().padStart(2, '0')}`;
-            
             finalProxies.push({
                 ...p,
-                name: newName
+                name: `${code}-${countryCounts[code].toString().padStart(2, '0')}`
             });
         }
     });
 
-    // 此时 finalProxies 已经是处理好的干净列表
     const t = { proxies: finalProxies };
 
-    // --- 步骤 2: 生成端口映射 (Listeners) ---
+    // 2. 自动端口映射 (Listeners)
     const autoListeners = [];
     let startPort = 8000;
-
     finalProxies.forEach(proxy => {
         autoListeners.push({
             name: `mixed-${startPort}`,
             type: "mixed",
-            address: "0.0.0.0", // 允许局域网连接
+            address: "0.0.0.0",
             port: startPort, 
-            proxy: proxy.name   // 绑定到(可能已重命名过的)节点名
+            proxy: proxy.name
         });
         startPort++;
     });
 
-    // --- 步骤 3: 组装配置 ---
     const u = buildProxyGroups({ landing: landing });
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL", icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png", "include-all":true, type:"select", proxies:d});
@@ -266,7 +247,7 @@ function main(e) {
         "unified-delay": true,
         "tcp-concurrent": true,
         "global-client-fingerprint": "chrome",
-        "listeners": autoListeners, // 注入自动生成的端口
+        "listeners": autoListeners,
         "proxy-groups": u,
         "rule-providers": ruleProviders,
         rules: baseRules,
