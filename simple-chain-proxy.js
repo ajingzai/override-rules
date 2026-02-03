@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (速度修复平衡版)
+powerfullz 的 Substore 订阅转换脚本 (严格分流防泄露版)
 https://github.com/powerfullz/override-rules
 
-修改说明：
-1. [速度修复] 默认 DNS 改回阿里/腾讯 (UDP)，秒开国内所有中小网站。
-2. [防污染] 启用 fallback + geoip 机制。如果是国外网站，自动切换到加密 DNS，防止污染。
-3. [结构保持] 选择代理 -> [前置代理/落地节点/手动/直连]。
+核心修复：
+1. [默认 DNS] 彻底换成 Google/Cloudflare DoH。解决测试显示 "China Mobile" 的问题。
+2. [国内 DNS] 使用 nameserver-policy 强制国内域名走 UDP 直连，保证速度。
+3. [结构] 保持：选择代理 -> [前置代理/落地节点/手动/直连]。
 */
 
 // ================= 1. 核心底层 (保留) =================
@@ -76,47 +76,55 @@ const baseRules=[
 
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
-// ================= 5. DNS 配置 (速度平衡修复) =================
+// ================= 5. DNS 配置 (严格分流版) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     const dns = {
         enable: true,
         ipv6: false, 
-        "prefer-h3": false,
+        "prefer-h3": true,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
         
-        // 【核心修改 1】主要 DNS：改回国内 DNS (UDP)
-        // 确保所有国内网站（包含小网站）都能毫秒级解析
+        // ------------------------------------------------
+        // 【核心修改 1】 默认 DNS (Nameserver)
+        // ------------------------------------------------
+        // 这里必须全是国外的 encrypted DNS (DoH/DoT)。
+        // 任何非国内域名（包括 leaktest），都会默认走这里。
+        // 因为是 DoH，Clash 会把请求封装成 HTTPS 流量走代理发出去。
+        // ISP (移动) 根本看不到 DNS 请求，自然不会泄露。
         nameserver: [
-            "223.5.5.5",
-            "119.29.29.29"
+            "https://8.8.8.8/dns-query",
+            "https://1.1.1.1/dns-query"
         ],
         
-        // 【核心修改 2】回退 DNS：国外加密 DNS (DoH)
-        // 当主要 DNS 解析结果不对劲时，用这个
+        // ------------------------------------------------
+        // 【核心修改 2】 策略 DNS (Policy) - 速度保障
+        // ------------------------------------------------
+        // 只有明确在 geosite:cn 列表里的域名，才允许走国内 UDP。
+        // 这保证了 B站/淘宝/微信 的速度和直连体验。
+        "nameserver-policy": {
+            "geosite:cn,private,apple,huawei,xiaomi": [
+                "223.5.5.5",
+                "119.29.29.29"
+            ]
+        },
+
+        // ------------------------------------------------
+        // 【核心修改 3】 Fallback (回退)
+        // ------------------------------------------------
+        // 与 nameserver 保持一致，确保回退时也不走国内
         fallback: [
             "https://8.8.8.8/dns-query",
             "https://1.1.1.1/dns-query"
         ],
 
-        // 【核心修改 3】回退过滤器 (GeoIP)
-        // 逻辑：如果 nameserver (国内DNS) 返回了非 CN 的 IP，
-        // Clash 就会认为结果不可信（可能是污染，也可能是国外网站），
-        // 从而强制切换到 fallback (国外DoH) 去解析。
+        // 辅助检测，防止污染
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
             "ipcidr": ["240.0.0.0/4"]
-        },
-        
-        // 这里的 Policy 依然保留，作为已知域名的加速通道
-        "nameserver-policy": {
-            "geosite:cn,private": [
-                "223.5.5.5",
-                "119.29.29.29"
-            ]
         }
     };
 
