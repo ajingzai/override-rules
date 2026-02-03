@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (非TUN/系统代理专用版)
+powerfullz 的 Substore 订阅转换脚本 (链式代理自动化版)
 https://github.com/powerfullz/override-rules
 
-优化重点：
-1. [轻量化] 移除 TUN 模式，仅依赖 System Proxy，对系统零侵入。
-2. [极速] 强制 Fake-IP 模式，跳过 Windows 本地 DNS 解析步骤，解决“慢”的问题。
-3. [稳定] 阻断 QUIC，修复 Gemini/Sora 转圈。
-4. [防泄露] 虽然不开 TUN，但在 Clash 内部使用 DoH 代理远程解析，确保浏览器内不泄露。
+新增功能：
+1. [自动化] 自动识别“落地/家宽”节点，并强制注入 dialer-proxy: "前置代理"。
+   - 效果：所有家宽节点会自动通过“前置代理”组中转，不再直连。
+2. [非TUN优化] 保持 Fake-IP 和 System Proxy 优化。
+3. [防泄露] 保持 DoH 防劫持。
 */
 
 // ================= 1. 核心底层 =================
@@ -30,9 +30,9 @@ const ruleProviders={
     Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}
 };
 
-// ================= 4. 规则配置 (非TUN优化) =================
+// ================= 4. 规则配置 =================
 const baseRules=[
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC，强迫浏览器走 TCP 代理
+    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
     
     // GitHub 加速
@@ -97,34 +97,21 @@ const baseRules=[
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ================= 5. DNS 配置 (非TUN模式专用) =================
-// 逻辑：因为没有TUN，我们无法劫持系统流量。
-// 我们依赖 Fake-IP 模式，让 Clash 瞬间接管浏览器请求。
+// ================= 5. DNS 配置 =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     return {
         enable: true,
-        ipv6: false, // 强关 IPv6 解析，防止回退延迟
+        ipv6: false, 
         "prefer-h3": false,
-        "enhanced-mode": "fake-ip", // 必须是 fake-ip，这让非TUN模式也能很快
+        "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
-        
-        // 节点域名解析专用 (国内UDP)
         "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29"],
-
-        // 内部解析用 (国外DoH)
-        // 虽然系统不走这个，但 Clash 接管流量后需要用这个去远端解析
-        nameserver: [
-            "https://8.8.8.8/dns-query",
-            "https://1.1.1.1/dns-query"
-        ],
-        
-        // 国内域名策略 (国内UDP直连，提速)
+        nameserver: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
         "nameserver-policy": {
             "geosite:cn,private,apple,huawei,xiaomi": ["223.5.5.5", "119.29.29.29"]
         },
-
         fallback: [],
         "fallback-filter": { "geoip": true, "geoip-code": "CN", "ipcidr": ["240.0.0.0/4"] },
         "fake-ip-filter": t
@@ -169,8 +156,33 @@ function buildProxyGroups(params){
 
 // ================= 7. 主程序 =================
 function main(e){
-    const t = {proxies:e.proxies};
-    const u = buildProxyGroups({ landing: landing, defaultProxies: e.proxies.map(p=>p.name) });
+    let finalProxies = e.proxies;
+    
+    // 【核心注入逻辑】
+    // 如果开启了 landing，自动遍历所有节点
+    // 凡是符合“家宽/落地”正则的，强行加入 dialer-proxy 参数
+    if (landing) {
+        const landingRegRaw = "家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|落地";
+        const landingRegExp = new RegExp(landingRegRaw, "i");
+        
+        finalProxies = finalProxies.map(p => {
+            if (landingRegExp.test(p.name)) {
+                // 这是一个落地节点，我们给它装上“前置代理”
+                return {
+                    ...p,
+                    "dialer-proxy": PROXY_GROUPS.FRONT // "前置代理"
+                };
+            }
+            return p;
+        });
+    }
+
+    const t = {proxies:e.proxies}; // 注意：Clash 配置里的 proxies 列表通常不需要包含 dialer-proxy 字段，
+    // 但是！Clash Meta 的逻辑是，如果节点对象里有 dialer-proxy，它就会生效。
+    // 所以我们需要把 finalProxies 赋值回去
+    t.proxies = finalProxies;
+
+    const u = buildProxyGroups({ landing: landing, defaultProxies: finalProxies.map(p=>p.name) });
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
 
@@ -187,7 +199,6 @@ function main(e){
         "unified-delay": true,
         "tcp-concurrent": true,
         "global-client-fingerprint": "chrome",
-        // 移除了 TUN 配置，只保留最基础的
         "proxy-groups":u,
         "rule-providers":ruleProviders,
         rules: baseRules,
