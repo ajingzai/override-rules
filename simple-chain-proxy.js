@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (严格分流防泄露版)
+powerfullz 的 Substore 订阅转换脚本 (YouTube修复+防泄露加强版)
 https://github.com/powerfullz/override-rules
 
-核心修复：
-1. [默认 DNS] 彻底换成 Google/Cloudflare DoH。解决测试显示 "China Mobile" 的问题。
-2. [国内 DNS] 使用 nameserver-policy 强制国内域名走 UDP 直连，保证速度。
-3. [结构] 保持：选择代理 -> [前置代理/落地节点/手动/直连]。
+修复内容：
+1. [关键修复] 显式添加 YouTube 图片 CDN (ggpht.com) 规则，解决缩略图加载失败。
+2. [DNS 修复] 弃用不稳定的 DoH，改回 UDP 8.8.8.8，并强制 DNS 流量走代理 (防泄露 + 提高成功率)。
+3. [结构保持] 选择代理 -> [前置代理/落地节点/手动/直连]。
 */
 
 // ================= 1. 核心底层 (保留) =================
@@ -35,8 +35,19 @@ const ruleProviders={
     Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}
 };
 
-// ================= 4. 规则重定向 =================
+// ================= 4. 规则重定向 (核心修复区) =================
 const baseRules=[
+    // 0. 强制 DNS 流量走代理 (解决 DNS 泄露的绝杀)
+    `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
+    `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
+
+    // 1. 显式修复 YouTube 图片/头像加载
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
+
+    // 2. 基础规则
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
@@ -76,34 +87,27 @@ const baseRules=[
 
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
-// ================= 5. DNS 配置 (严格分流版) =================
+// ================= 5. DNS 配置 (回归经典稳定) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     const dns = {
         enable: true,
         ipv6: false, 
-        "prefer-h3": true,
+        "prefer-h3": false,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
         
-        // ------------------------------------------------
-        // 【核心修改 1】 默认 DNS (Nameserver)
-        // ------------------------------------------------
-        // 这里必须全是国外的 encrypted DNS (DoH/DoT)。
-        // 任何非国内域名（包括 leaktest），都会默认走这里。
-        // 因为是 DoH，Clash 会把请求封装成 HTTPS 流量走代理发出去。
-        // ISP (移动) 根本看不到 DNS 请求，自然不会泄露。
+        // 1. 默认 DNS (国外)
+        // 改回 UDP IP，配合上面的 IP-CIDR 规则强制走代理。
+        // 比 DoH 更稳定，且只要走了代理就不会泄露。
         nameserver: [
-            "https://8.8.8.8/dns-query",
-            "https://1.1.1.1/dns-query"
+            "8.8.8.8",
+            "1.1.1.1"
         ],
         
-        // ------------------------------------------------
-        // 【核心修改 2】 策略 DNS (Policy) - 速度保障
-        // ------------------------------------------------
-        // 只有明确在 geosite:cn 列表里的域名，才允许走国内 UDP。
-        // 这保证了 B站/淘宝/微信 的速度和直连体验。
+        // 2. 国内分流
+        // 保证国内速度
         "nameserver-policy": {
             "geosite:cn,private,apple,huawei,xiaomi": [
                 "223.5.5.5",
@@ -111,16 +115,13 @@ function buildDnsConfig({mode:e, fakeIpFilter:t}) {
             ]
         },
 
-        // ------------------------------------------------
-        // 【核心修改 3】 Fallback (回退)
-        // ------------------------------------------------
-        // 与 nameserver 保持一致，确保回退时也不走国内
+        // 3. Fallback (国外)
         fallback: [
-            "https://8.8.8.8/dns-query",
-            "https://1.1.1.1/dns-query"
+            "8.8.8.8",
+            "1.1.1.1"
         ],
 
-        // 辅助检测，防止污染
+        // 4. 防污染
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
