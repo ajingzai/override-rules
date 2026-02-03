@@ -1,12 +1,13 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (严格匹配"落地"版)
+powerfullz 的 Substore 订阅转换脚本 (端口映射/指纹浏览器专用版)
 https://github.com/powerfullz/override-rules
 
-修改重点：
-1. [严格筛选] 只有包含关键字 "落地" 的节点，才会被注入 dialer-proxy。
-   - "Rack家宽" -> 不会被处理（当作普通节点）。
-   - "美国-落地" -> 会被注入 dialer-proxy: "前置代理"。
-2. [自动化] 被处理的节点名字依然会加 " -> 前置" 后缀，方便你在落地组里确认。
+新增核心功能：
+1. [端口映射] 自动遍历所有节点，从 8000 端口开始，为每个节点创建一个独立端口。
+   - 格式：0.0.0.0:8000 -> 节点1
+   - 格式：0.0.0.0:8001 -> 节点2 ...
+2. [兼容性] 完美兼容之前的“落地前置”链式代理逻辑。
+   - 如果节点被标记为 "-> 前置"，端口映射也会指向这个处理后的链式节点。
 */
 
 // ================= 1. 核心底层 =================
@@ -15,36 +16,31 @@ const NODE_SUFFIX="节点";function parseBool(e){return"boolean"==typeof e?e:"st
 // ================= 2. 组名定义 =================
 const PROXY_GROUPS={SELECT:"选择代理",FRONT:"前置代理",LANDING:"落地节点",MANUAL:"手动选择",DIRECT:"直连"};
 
-// ================= 3. 规则配置 (非TUN优化) =================
+// ================= 3. 规则配置 =================
 const baseRules=[
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC
+    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
     
-    // GitHub 加速
     `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
     
-    // Google & Gemini 修复
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
 
-    // Sora & OpenAI
     `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
 
-    // YouTube 修复
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
 
-    // 基础规则
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
@@ -84,13 +80,13 @@ const baseRules=[
 
 const ruleProviders={ADBlock:{type:"http",behavior:"domain",format:"mrs",interval:86400,url:"https://adrules.top/adrules-mihomo.mrs",path:"./ruleset/ADBlock.mrs"},SogouInput:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt",path:"./ruleset/SogouInput.txt"},StaticResources:{type:"http",behavior:"domain",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/domainset/cdn.txt",path:"./ruleset/StaticResources.txt"},CDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/cdn.txt",path:"./ruleset/CDNResources.txt"},TikTok:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/TikTok.list",path:"./ruleset/TikTok.list"},EHentai:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/EHentai.list",path:"./ruleset/EHentai.list"},SteamFix:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/SteamFix.list",path:"./ruleset/SteamFix.list"},GoogleFCM:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/FirebaseCloudMessaging.list",path:"./ruleset/FirebaseCloudMessaging.list"},AdditionalFilter:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalFilter.list",path:"./ruleset/AdditionalFilter.list"},AdditionalCDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalCDNResources.list",path:"./ruleset/AdditionalCDNResources.list"},Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}};
 
-// ================= 5. DNS 配置 (非TUN优化) =================
+// ================= 5. DNS 配置 =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     return {
         enable: true,
         ipv6: false, 
         "prefer-h3": false,
-        "enhanced-mode": "fake-ip", 
+        "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
@@ -112,7 +108,6 @@ function buildProxyGroups(params){
     const { landing, defaultProxies: l } = params;
     const groups = [];
 
-    // 1. 选择代理
     const selectProxies = landing ? [PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"] : [];
     const selectGroup = {
         name: PROXY_GROUPS.SELECT,
@@ -123,24 +118,16 @@ function buildProxyGroups(params){
     if (!landing) selectGroup["include-all"] = true;
     groups.push(selectGroup);
 
-    // 2. 落地 & 前置 (仅 landing=true)
     if (landing) {
-        // 前置代理：排除掉已经被我们修改过的节点（避免循环）
         groups.push({
             name: PROXY_GROUPS.FRONT,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
-            type: "select", 
-            "include-all": true, 
-            "exclude-filter": " -> 前置" // 排除所有被链式处理过的节点
+            type: "select", "include-all": true, "exclude-filter": " -> 前置"
         });
-
-        // 落地节点：只包含我们修改过的节点
         groups.push({
             name: PROXY_GROUPS.LANDING,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
-            type: "select", 
-            "include-all": true, 
-            filter: " -> 前置" // 只筛选名字里有 " -> 前置" 的节点
+            type: "select", "include-all": true, filter: " -> 前置"
         });
     }
 
@@ -153,24 +140,17 @@ function buildProxyGroups(params){
 function main(e){
     let finalProxies = e.proxies;
     
-    // 【核心筛选逻辑】
-    // 只有当 landing=true 且节点名称包含 "落地" 时，才注入 dialer-proxy
+    // 1. 处理节点：筛选落地、链式注入
     if (landing) {
-        // 这里就是你要的严格匹配：只认 "落地" 二字
         const strictLandingKeyword = "落地";
-        
         finalProxies = finalProxies.map(p => {
-            // 检查名字是否包含 "落地"
             if (p.name.includes(strictLandingKeyword)) {
                 return {
                     ...p,
-                    // 注入前置代理
                     "dialer-proxy": PROXY_GROUPS.FRONT, 
-                    // 改名（用于后续分组识别和视觉确认）
                     name: `${p.name} -> 前置` 
                 };
             }
-            // 不包含 "落地" 的节点，原样返回，不做任何修改
             return p;
         });
     }
@@ -178,9 +158,26 @@ function main(e){
     const t = {proxies:e.proxies};
     t.proxies = finalProxies;
 
+    // 2. 生成策略组
     const u = buildProxyGroups({ landing: landing, defaultProxies: finalProxies.map(p=>p.name) });
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
+
+    // 3. 【核心新增】自动生成 Listeners (端口映射)
+    // 遍历所有节点，从 8000 开始分配端口
+    const autoListeners = [];
+    let startPort = 8000;
+
+    finalProxies.forEach(proxy => {
+        autoListeners.push({
+            name: `mixed-${startPort}`, // 唯一标识名
+            type: "mixed",              // 支持 HTTP 和 SOCKS5
+            address: "0.0.0.0",         // 允许局域网连接 (0.0.0.0)，只允许本机就改 127.0.0.1
+            port: startPort,            // 端口号
+            proxy: proxy.name           // 绑定到具体节点名
+        });
+        startPort++; // 端口号 +1
+    });
 
     const dnsFake = buildDnsConfig({
         mode: "fake-ip",
@@ -195,6 +192,8 @@ function main(e){
         "unified-delay": true,
         "tcp-concurrent": true,
         "global-client-fingerprint": "chrome",
+        // 注入生成的 listeners 配置
+        "listeners": autoListeners, 
         "proxy-groups":u,
         "rule-providers":ruleProviders,
         rules: baseRules,
