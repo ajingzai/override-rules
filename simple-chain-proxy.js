@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (全站硬编码版)
+powerfullz 的 Substore 订阅转换脚本 (强制链式版)
 https://github.com/powerfullz/override-rules
 
-配置亮点：
-1. [硬编码] 抛弃不稳定的 Geosite，手动写死 Facebook/Insta/Netflix/Spotify/GitHub 等 100+ 个常用域名，保证 100% 走代理。
-2. [TikTok/X] 保持之前的暴力修复。
-3. [DNS] 保持去毒（不含 system）+ 分流策略。
-4. [功能] 链式代理、自动重命名、端口映射全部保留。
+配置变更：
+1. [强制链式] 移除了对 Hy2/VLESS 的豁免逻辑。只要名字含“落地”，一律注入 dialer-proxy。
+2. [硬编码规则] 包含 TikTok/Google/X/AI 等全站硬编码规则。
+3. [DNS配置] 保持去毒（无 system）+ 严格分流。
+4. [功能] 保持自动重命名、端口映射。
 */
 
 // ================= 1. 基础工具 =================
@@ -117,7 +117,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,anthropic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,claude.ai,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,midjourney.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`, // MJ 依赖 Discord
+    `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`, 
 
     // ================= 极客/开发/工具 =================
     // Google 全家桶
@@ -141,9 +141,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,cloudflare.com,${PROXY_GROUPS.SELECT}`,
 
     // ================= 基础兜底 =================
-    // 广告拦截
     "RULE-SET,ADBlock,REJECT",
-    // 国内直连 (白名单机制)
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
     `RULE-SET,StaticResources,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
@@ -153,8 +151,6 @@ const baseRules = [
     `DOMAIN-KEYWORD,tencent,${PROXY_GROUPS.DIRECT}`,
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
-    
-    // 剩下的全部走代理 (黑名单机制，确保不漏网)
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
@@ -183,6 +179,12 @@ function buildDnsConfig() {
                 "119.29.29.29"
             ]
         },
+        
+        // 【关键修复】节点域名解析必须用 UDP IP！
+        "proxy-server-nameserver": [
+            "223.5.5.5",
+            "119.29.29.29"
+        ],
         
         fallback: [],
         "fallback-filter": { "geoip": true, "geoip-code": "CN", "ipcidr": ["240.0.0.0/4"] },
@@ -268,11 +270,14 @@ function main(e) {
     const excludeKeywords = /套餐|官网|剩余|时间|节点|重置|异常|邮箱|网址|Traffic|Expire|Reset/i;
     const strictLandingKeyword = "落地";
 
+    // 1. 节点处理
     rawProxies.forEach(p => {
         if (excludeKeywords.test(p.name)) return;
 
+        // B. 处理“落地”节点
         if (p.name.includes(strictLandingKeyword)) {
             if (landing) {
+                // 【强制链式】不管什么协议，一律加前置
                 finalProxies.push({
                     ...p,
                     "dialer-proxy": PROXY_GROUPS.FRONT,
@@ -281,7 +286,9 @@ function main(e) {
             } else {
                 finalProxies.push(p);
             }
-        } else {
+        } 
+        // C. 处理普通节点 (重命名)
+        else {
             const code = getCountryCode(p.name);
             if (!countryCounts[code]) countryCounts[code] = 0;
             countryCounts[code]++;
@@ -294,6 +301,7 @@ function main(e) {
 
     const t = { proxies: finalProxies };
 
+    // 2. 端口映射
     const autoListeners = [];
     let startPort = 8000;
     finalProxies.forEach(proxy => {
