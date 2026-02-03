@@ -1,12 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (重命名+清洗+端口映射版)
+powerfullz 的 Substore 订阅转换脚本 (手机Gemini修复版)
 https://github.com/powerfullz/override-rules
 
-新增功能：
-1. [清洗] 自动剔除包含 "套餐/官网/剩余/节点/重置" 等关键词的无效节点。
-2. [重命名] 除了 "落地" 节点外，其他节点自动按国家代码重命名 (如 HK-01, US-02)。
-3. [链式] "落地" 节点保持原名，但注入 dialer-proxy 并加 "-> 前置" 后缀。
-4. [映射] 所有最终保留的节点，自动生成 8000 起始的端口映射。
+修复内容：
+1. [Gemini/图片] 引入 GEOSITE,GOOGLE 规则，强制所有 Google 域名(含静态资源)走代理，解决手机 App 缺图/灰块。
+2. [保留] 自动重命名、端口映射、落地链式代理等所有功能。
 */
 
 // ================= 1. 核心底层 =================
@@ -15,26 +13,35 @@ const NODE_SUFFIX="节点";function parseBool(e){return"boolean"==typeof e?e:"st
 // ================= 2. 组名定义 =================
 const PROXY_GROUPS={SELECT:"选择代理",FRONT:"前置代理",LANDING:"落地节点",MANUAL:"手动选择",DIRECT:"直连"};
 
-// ================= 3. 规则配置 =================
+// ================= 3. 规则配置 (Google增强) =================
 const baseRules=[
+    // 1. 阻断 QUIC (解决转圈)
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
+    
+    // 2. GitHub
     `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
+    
+    // 3. 【核心修复】Gemini/Sora/AI
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`, // 手机Gemini核心API
     `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
+
+    // 4. 【核心修复】Google 全家桶 (含所有图片CDN)
+    // 手机端图片通常在 lh3.googleusercontent.com 或 encrypted-tbn0.gstatic.com
+    // 直接用 GEOSITE 规则一把梭，防止漏网
+    `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, // YouTube/Google图片
+    
+    // 基础规则
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
@@ -54,8 +61,7 @@ const baseRules=[
     `GEOSITE,ONEDRIVE,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,MICROSOFT,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,TELEGRAM,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,YOUTUBE,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`,
+    `GEOSITE,YOUTUBE,${PROXY_GROUPS.SELECT}`, // 上面 GEOSITE,GOOGLE 已包含，但也保留
     `GEOSITE,NETFLIX,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,SPOTIFY,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,BAHAMUT,${PROXY_GROUPS.SELECT}`,
@@ -130,7 +136,7 @@ function buildProxyGroups(params){
     return groups;
 }
 
-// ================= 7. 辅助函数：重命名逻辑 =================
+// 辅助函数：重命名
 function getCountryCode(name) {
     if (/香港|HK|Hong Kong/i.test(name)) return "HK";
     if (/台湾|TW|Taiwan/i.test(name)) return "TW";
@@ -142,7 +148,6 @@ function getCountryCode(name) {
     if (/德国|DE|Germany/i.test(name)) return "DE";
     if (/法国|FR|France/i.test(name)) return "FR";
     if (/俄罗斯|RU|Russia/i.test(name)) return "RU";
-    // 如果没有匹配到，返回 "OT" (Other)
     return "OT";
 }
 
@@ -150,23 +155,14 @@ function getCountryCode(name) {
 function main(e){
     let rawProxies = e.proxies;
     let finalProxies = [];
-    
-    // 计数器，用于生成 HK-01, HK-02 这种序号
     const countryCounts = {};
-
-    // 1. 【清洗 + 重命名 + 链式注入】
     const excludeKeywords = /套餐|官网|剩余|时间|节点|重置|异常|邮箱|网址|Traffic|Expire|Reset/i;
     const strictLandingKeyword = "落地";
 
+    // 1. 节点清洗与重命名
     rawProxies.forEach(p => {
-        // A. 剔除无效节点
-        if (excludeKeywords.test(p.name)) {
-            return; // 直接跳过，不要这个节点
-        }
+        if (excludeKeywords.test(p.name)) return;
 
-        let newName = p.name;
-        
-        // B. 处理“落地”节点 (保持原名，只加后缀和参数)
         if (p.name.includes(strictLandingKeyword)) {
             if (landing) {
                 finalProxies.push({
@@ -177,22 +173,13 @@ function main(e){
             } else {
                 finalProxies.push(p);
             }
-        } 
-        // C. 处理普通节点 (重命名)
-        else {
+        } else {
             const code = getCountryCode(p.name);
-            
-            // 初始化计数器
             if (!countryCounts[code]) countryCounts[code] = 0;
             countryCounts[code]++;
-            
-            // 生成新名字：HK-01, US-05
-            const indexStr = countryCounts[code].toString().padStart(2, '0');
-            newName = `${code}-${indexStr}`;
-            
             finalProxies.push({
                 ...p,
-                name: newName
+                name: `${code}-${countryCounts[code].toString().padStart(2, '0')}`
             });
         }
     });
@@ -200,15 +187,14 @@ function main(e){
     const t = {proxies:e.proxies};
     t.proxies = finalProxies;
 
-    // 2. 生成策略组
+    // 2. 生成组
     const u = buildProxyGroups({ landing: landing, defaultProxies: finalProxies.map(p=>p.name) });
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
 
-    // 3. 【自动端口映射】
+    // 3. 生成端口映射
     const autoListeners = [];
     let startPort = 8000;
-
     finalProxies.forEach(proxy => {
         autoListeners.push({
             name: `mixed-${startPort}`,
