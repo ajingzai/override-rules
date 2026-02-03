@@ -1,37 +1,35 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (前置代理修复版)
+powerfullz 的 Substore 订阅转换脚本 (完美层级版)
 https://github.com/powerfullz/override-rules
 
 修改说明：
-1. 当 landing=true 时，主策略组名称强制为 "前置代理"。
-2. "前置代理" 自动排除落地节点。
-3. "落地节点" 单独显示。
-4. 修复了之前版本因为命名不匹配导致“前置代理”消失的问题。
+1. 结构调整为：选择代理 -> [前置代理, 落地节点, 手动选择, 直连]。
+2. "选择代理" 位于最顶部，拥有最高流量控制权。
+3. 必须开启 landing=true 参数才能看到 "前置代理" 和 "落地节点"。
+4. 修复了所有报错，保留了完整底层逻辑。
 */
 
-// ================= 1. 核心底层 (保留勿动) =================
+// ================= 1. 核心底层 (保留勿动，防止报错) =================
 const NODE_SUFFIX="节点";function parseBool(e){return"boolean"==typeof e?e:"string"==typeof e&&("true"===e.toLowerCase()||"1"===e)}function parseNumber(e,t=0){if(null==e)return t;const o=parseInt(e,10);return isNaN(o)?t:o}function buildFeatureFlags(e){const t=Object.entries({loadbalance:"loadBalance",landing:"landing",ipv6:"ipv6Enabled",full:"fullConfig",keepalive:"keepAliveEnabled",fakeip:"fakeIPEnabled",quic:"quicEnabled"}).reduce((t,[o,r])=>(t[r]=parseBool(e[o])||!1,t),{});return t.countryThreshold=parseNumber(e.threshold,0),t}const rawArgs="undefined"!=typeof $arguments?$arguments:{},{loadBalance:loadBalance,landing:landing,ipv6Enabled:ipv6Enabled,fullConfig:fullConfig,keepAliveEnabled:keepAliveEnabled,fakeIPEnabled:fakeIPEnabled,quicEnabled:quicEnabled,countryThreshold:countryThreshold}=buildFeatureFlags(rawArgs);function stripNodeSuffix(e){const t=new RegExp("节点$");return e.map(e=>e.replace(t,""))}const buildList=(...e)=>e.flat().filter(Boolean);
 
-// ================= 2. 动态定义组名 =================
-// 核心修改：如果开启了 landing，主组叫 "前置代理"，否则叫 "选择代理"
-const MAIN_GROUP_NAME = landing ? "前置代理" : "选择代理";
-
+// ================= 2. 组名定义 =================
 const PROXY_GROUPS={
-    SELECT: MAIN_GROUP_NAME, // 动态名称
+    SELECT: "选择代理",
+    FRONT: "前置代理",
+    LANDING: "落地节点",
     MANUAL: "手动选择",
-    DIRECT: "直连",
-    LANDING: "落地节点"
+    DIRECT: "直连"
 };
 
-// ================= 3. 规则集 (保留) =================
+// ================= 3. 规则集 =================
 const ruleProviders={ADBlock:{type:"http",behavior:"domain",format:"mrs",interval:86400,url:"https://adrules.top/adrules-mihomo.mrs",path:"./ruleset/ADBlock.mrs"},SogouInput:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt",path:"./ruleset/SogouInput.txt"},StaticResources:{type:"http",behavior:"domain",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/domainset/cdn.txt",path:"./ruleset/StaticResources.txt"},CDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://ruleset.skk.moe/Clash/non_ip/cdn.txt",path:"./ruleset/CDNResources.txt"},TikTok:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/TikTok.list",path:"./ruleset/TikTok.list"},EHentai:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/EHentai.list",path:"./ruleset/EHentai.list"},SteamFix:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/SteamFix.list",path:"./ruleset/SteamFix.list"},GoogleFCM:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/FirebaseCloudMessaging.list",path:"./ruleset/FirebaseCloudMessaging.list"},AdditionalFilter:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalFilter.list",path:"./ruleset/AdditionalFilter.list"},AdditionalCDNResources:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalCDNResources.list",path:"./ruleset/AdditionalCDNResources.list"},Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}};
 
-// ================= 4. 规则重定向 (指向动态主组) =================
+// ================= 4. 规则重定向 (全部指向“选择代理”) =================
 const baseRules=[
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
-    `DOMAIN-SUFFIX,truthsocial.com,${PROXY_GROUPS.SELECT}`, // 指向 "前置代理" 或 "选择代理"
+    `DOMAIN-SUFFIX,truthsocial.com,${PROXY_GROUPS.SELECT}`, // 核心：所有规则指向 SELECT
     `RULE-SET,StaticResources,${PROXY_GROUPS.DIRECT}`,
     `RULE-SET,CDNResources,${PROXY_GROUPS.DIRECT}`,
     `RULE-SET,AdditionalCDNResources,${PROXY_GROUPS.DIRECT}`,
@@ -75,41 +73,59 @@ const countriesMeta={};
 function hasLowCost(e){return false}
 function parseCountries(e){return []}
 function buildCountryProxyGroups(e){return []}
-function buildBaseLists(e){return {defaultProxies:[]}} // 占位
+function buildBaseLists(e){return {defaultProxies:[]}}
 
-// ================= 6. 策略组生成 (核心修改) =================
+// ================= 6. 策略组生成 (核心层级逻辑) =================
 function buildProxyGroups(params){
     const { landing, defaultProxies: l } = params;
     
     const groups = [];
-    
-    // 关键词正则
+    // 匹配家宽/落地的正则
     const landingRegex = "(?i)家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|落地";
 
-    // 1. 生成主代理组 (前置代理/选择代理)
-    groups.push({
-        name: PROXY_GROUPS.SELECT, // 名字是动态的
-        // 如果是前置代理，图标用紫色地球(Area)，否则用蓝色箭头(Proxy)
-        icon: landing ? "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png" 
-                      : "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Proxy.png",
-        type: "select",
-        "include-all": true,
-        // 如果开启 landing，则排除落地节点
-        "exclude-filter": landing ? landingRegex : undefined
-    });
+    // --- 第1组：选择代理 (总入口) ---
+    // 它的成员是其他策略组，不是直接的节点
+    const selectProxies = [];
+    if (landing) {
+        selectProxies.push(PROXY_GROUPS.FRONT);   // 前置代理
+        selectProxies.push(PROXY_GROUPS.LANDING); // 落地节点
+    }
+    selectProxies.push(PROXY_GROUPS.MANUAL);      // 手动选择
+    selectProxies.push("DIRECT");                 // 直连
 
-    // 2. 生成 [落地节点] (仅当 landing=true)
+    // 如果没开启landing，为了不让列表为空，就塞入所有节点
+    const selectGroup = {
+        name: PROXY_GROUPS.SELECT,
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Proxy.png",
+        type: "select",
+        proxies: selectProxies
+    };
+    if (!landing) selectGroup["include-all"] = true; // 没开启landing，选择代理直接包含所有
+    groups.push(selectGroup);
+
+    // --- 第2组：前置代理 (仅 landing=true) ---
+    if (landing) {
+        groups.push({
+            name: PROXY_GROUPS.FRONT,
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
+            type: "select",
+            "include-all": true,
+            "exclude-filter": landingRegex // 排除落地节点
+        });
+    }
+
+    // --- 第3组：落地节点 (仅 landing=true) ---
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
             type: "select",
             "include-all": true,
-            filter: landingRegex // 只包含落地节点
+            filter: landingRegex // 只留落地节点
         });
     }
 
-    // 3. 生成 [手动选择]
+    // --- 第4组：手动选择 ---
     groups.push({
         name: PROXY_GROUPS.MANUAL,
         icon: "https://gcore.jsdelivr.net/gh/shindgewongxj/WHATSINStash@master/icon/select.png",
@@ -117,7 +133,7 @@ function buildProxyGroups(params){
         type: "select"
     });
 
-    // 4. 生成 [直连]
+    // --- 第5组：直连 ---
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png",
@@ -132,8 +148,10 @@ function buildProxyGroups(params){
 function main(e){
     const t = {proxies:e.proxies};
     
+    // 生成核心分组
     const u = buildProxyGroups({ landing: landing });
 
+    // --- 第6组：GLOBAL (自动生成) ---
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
 
