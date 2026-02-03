@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (YouTube修复+防泄露加强版)
+powerfullz 的 Substore 订阅转换脚本 (DNS强行代理+YouTube修复版)
 https://github.com/powerfullz/override-rules
 
 修复内容：
-1. [关键修复] 显式添加 YouTube 图片 CDN (ggpht.com) 规则，解决缩略图加载失败。
-2. [DNS 修复] 弃用不稳定的 DoH，改回 UDP 8.8.8.8，并强制 DNS 流量走代理 (防泄露 + 提高成功率)。
-3. [结构保持] 选择代理 -> [前置代理/落地节点/手动/直连]。
+1. [绝杀] 添加 IP-CIDR 规则，强制 8.8.8.8 的 DNS 流量走代理通道。彻底解决移动宽带 DNS 抢答/泄露问题。
+2. [修复] 显式添加 YouTube 图片域名 (ggpht.com) 规则，解决缩略图灰屏。
+3. [结构] 保持：选择代理 -> [前置/落地/手动/直连]。
 */
 
 // ================= 1. 核心底层 (保留) =================
@@ -37,17 +37,19 @@ const ruleProviders={
 
 // ================= 4. 规则重定向 (核心修复区) =================
 const baseRules=[
-    // 0. 强制 DNS 流量走代理 (解决 DNS 泄露的绝杀)
+    // 【关键】强制 DNS 服务器的 IP 走代理
+    // 这样 8.8.8.8 的请求会被 Clash 捕获并封装进代理通道，ISP 无法劫持
     `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
 
-    // 1. 显式修复 YouTube 图片/头像加载
+    // 【关键】YouTube 图片/头像域名强制代理
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-KEYWORD,youtube,${PROXY_GROUPS.SELECT}`,
 
-    // 2. 基础规则
+    // 基础规则
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
@@ -87,7 +89,7 @@ const baseRules=[
 
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
-// ================= 5. DNS 配置 (回归经典稳定) =================
+// ================= 5. DNS 配置 (强制代理模式) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     const dns = {
         enable: true,
@@ -99,15 +101,13 @@ function buildDnsConfig({mode:e, fakeIpFilter:t}) {
         "use-hosts": true,
         
         // 1. 默认 DNS (国外)
-        // 改回 UDP IP，配合上面的 IP-CIDR 规则强制走代理。
-        // 比 DoH 更稳定，且只要走了代理就不会泄露。
+        // 改回普通 UDP，配合上面的 IP-CIDR 规则
         nameserver: [
             "8.8.8.8",
             "1.1.1.1"
         ],
         
-        // 2. 国内分流
-        // 保证国内速度
+        // 2. 国内分流 (保持速度)
         "nameserver-policy": {
             "geosite:cn,private,apple,huawei,xiaomi": [
                 "223.5.5.5",
@@ -115,7 +115,7 @@ function buildDnsConfig({mode:e, fakeIpFilter:t}) {
             ]
         },
 
-        // 3. Fallback (国外)
+        // 3. Fallback
         fallback: [
             "8.8.8.8",
             "1.1.1.1"
