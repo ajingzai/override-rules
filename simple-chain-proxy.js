@@ -1,13 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (端口映射/指纹浏览器专用版)
+powerfullz 的 Substore 订阅转换脚本 (重命名+清洗+端口映射版)
 https://github.com/powerfullz/override-rules
 
-新增核心功能：
-1. [端口映射] 自动遍历所有节点，从 8000 端口开始，为每个节点创建一个独立端口。
-   - 格式：0.0.0.0:8000 -> 节点1
-   - 格式：0.0.0.0:8001 -> 节点2 ...
-2. [兼容性] 完美兼容之前的“落地前置”链式代理逻辑。
-   - 如果节点被标记为 "-> 前置"，端口映射也会指向这个处理后的链式节点。
+新增功能：
+1. [清洗] 自动剔除包含 "套餐/官网/剩余/节点/重置" 等关键词的无效节点。
+2. [重命名] 除了 "落地" 节点外，其他节点自动按国家代码重命名 (如 HK-01, US-02)。
+3. [链式] "落地" 节点保持原名，但注入 dialer-proxy 并加 "-> 前置" 后缀。
+4. [映射] 所有最终保留的节点，自动生成 8000 起始的端口映射。
 */
 
 // ================= 1. 核心底层 =================
@@ -20,27 +19,22 @@ const PROXY_GROUPS={SELECT:"选择代理",FRONT:"前置代理",LANDING:"落地�
 const baseRules=[
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
-    
     `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
-    
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
-
     `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
-
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
-
     "RULE-SET,ADBlock,REJECT",
     "RULE-SET,AdditionalFilter,REJECT",
     `RULE-SET,SogouInput,${PROXY_GROUPS.DIRECT}`, 
@@ -136,24 +130,72 @@ function buildProxyGroups(params){
     return groups;
 }
 
-// ================= 7. 主程序 =================
+// ================= 7. 辅助函数：重命名逻辑 =================
+function getCountryCode(name) {
+    if (/香港|HK|Hong Kong/i.test(name)) return "HK";
+    if (/台湾|TW|Taiwan/i.test(name)) return "TW";
+    if (/新加坡|SG|Singapore/i.test(name)) return "SG";
+    if (/日本|JP|Japan/i.test(name)) return "JP";
+    if (/美国|US|America/i.test(name)) return "US";
+    if (/韩国|KR|Korea/i.test(name)) return "KR";
+    if (/英国|UK|United Kingdom/i.test(name)) return "UK";
+    if (/德国|DE|Germany/i.test(name)) return "DE";
+    if (/法国|FR|France/i.test(name)) return "FR";
+    if (/俄罗斯|RU|Russia/i.test(name)) return "RU";
+    // 如果没有匹配到，返回 "OT" (Other)
+    return "OT";
+}
+
+// ================= 8. 主程序 =================
 function main(e){
-    let finalProxies = e.proxies;
+    let rawProxies = e.proxies;
+    let finalProxies = [];
     
-    // 1. 处理节点：筛选落地、链式注入
-    if (landing) {
-        const strictLandingKeyword = "落地";
-        finalProxies = finalProxies.map(p => {
-            if (p.name.includes(strictLandingKeyword)) {
-                return {
+    // 计数器，用于生成 HK-01, HK-02 这种序号
+    const countryCounts = {};
+
+    // 1. 【清洗 + 重命名 + 链式注入】
+    const excludeKeywords = /套餐|官网|剩余|时间|节点|重置|异常|邮箱|网址|Traffic|Expire|Reset/i;
+    const strictLandingKeyword = "落地";
+
+    rawProxies.forEach(p => {
+        // A. 剔除无效节点
+        if (excludeKeywords.test(p.name)) {
+            return; // 直接跳过，不要这个节点
+        }
+
+        let newName = p.name;
+        
+        // B. 处理“落地”节点 (保持原名，只加后缀和参数)
+        if (p.name.includes(strictLandingKeyword)) {
+            if (landing) {
+                finalProxies.push({
                     ...p,
-                    "dialer-proxy": PROXY_GROUPS.FRONT, 
-                    name: `${p.name} -> 前置` 
-                };
+                    "dialer-proxy": PROXY_GROUPS.FRONT,
+                    name: `${p.name} -> 前置`
+                });
+            } else {
+                finalProxies.push(p);
             }
-            return p;
-        });
-    }
+        } 
+        // C. 处理普通节点 (重命名)
+        else {
+            const code = getCountryCode(p.name);
+            
+            // 初始化计数器
+            if (!countryCounts[code]) countryCounts[code] = 0;
+            countryCounts[code]++;
+            
+            // 生成新名字：HK-01, US-05
+            const indexStr = countryCounts[code].toString().padStart(2, '0');
+            newName = `${code}-${indexStr}`;
+            
+            finalProxies.push({
+                ...p,
+                name: newName
+            });
+        }
+    });
 
     const t = {proxies:e.proxies};
     t.proxies = finalProxies;
@@ -163,20 +205,19 @@ function main(e){
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
 
-    // 3. 【核心新增】自动生成 Listeners (端口映射)
-    // 遍历所有节点，从 8000 开始分配端口
+    // 3. 【自动端口映射】
     const autoListeners = [];
     let startPort = 8000;
 
     finalProxies.forEach(proxy => {
         autoListeners.push({
-            name: `mixed-${startPort}`, // 唯一标识名
-            type: "mixed",              // 支持 HTTP 和 SOCKS5
-            address: "0.0.0.0",         // 允许局域网连接 (0.0.0.0)，只允许本机就改 127.0.0.1
-            port: startPort,            // 端口号
-            proxy: proxy.name           // 绑定到具体节点名
+            name: `mixed-${startPort}`,
+            type: "mixed",
+            address: "0.0.0.0", 
+            port: startPort, 
+            proxy: proxy.name 
         });
-        startPort++; // 端口号 +1
+        startPort++;
     });
 
     const dnsFake = buildDnsConfig({
@@ -192,7 +233,6 @@ function main(e){
         "unified-delay": true,
         "tcp-concurrent": true,
         "global-client-fingerprint": "chrome",
-        // 注入生成的 listeners 配置
         "listeners": autoListeners, 
         "proxy-groups":u,
         "rule-providers":ruleProviders,
