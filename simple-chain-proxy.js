@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (DoH防劫持+YouTube修复版)
+powerfullz 的 Substore 订阅转换脚本 (Gemini/Sora修复+防泄露终极版)
 https://github.com/powerfullz/override-rules
 
-核心修复：
-1. [DNS] 启用 "proxy-server-nameserver" 确保节点解析正常。
-2. [DNS] 强制使用 DoH (HTTPS) 代替 UDP，彻底绕过移动宽带劫持。
-3. [DNS] 强制 Google DNS 流量走代理通道 (Anti-Leak)。
-4. [YouTube] 修复图片/头像加载问题。
+修复内容：
+1. [Gemini/Sora] 强制阻断 QUIC (UDP 443)，解决网页无限转圈/加载慢的问题。
+2. [Sora] 新增 sora.com 及 OpenAI 相关域名规则。
+3. [DNS] 采用 DoH 防泄露 + 国内 UDP 直连（速度与隐私兼顾）。
+4. [结构] 选择代理 -> [前置/落地/手动/直连]。
 */
 
 // ================= 1. 核心底层 (保留) =================
@@ -36,21 +36,40 @@ const ruleProviders={
     Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}
 };
 
-// ================= 4. 规则重定向 =================
+// ================= 4. 规则重定向 (核心修复区) =================
 const baseRules=[
-    // --- 核心防泄露规则 ---
-    // 强制 DoH 的 IP 走代理 (防止直接连接 8.8.8.8 被移动劫持)
+    // --- 0. 绝杀：强制阻断 QUIC (UDP 443) ---
+    // 解决 Gemini/Sora/YouTube 转圈的核心！
+    // 强制浏览器回退到 TCP，避免被运营商 UDP QoS 干扰。
+    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
+
+    // --- 1. 防 DNS 泄露 ---
+    // 强制 Google DNS 流量走代理
     `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
     `DOMAIN,cloudflare-dns.com,${PROXY_GROUPS.SELECT}`,
 
-    // --- YouTube 修复 ---
+    // --- 2. Sora & OpenAI 专属修复 ---
+    `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,oaistatic.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,oaiusercontent.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-KEYWORD,openai,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-KEYWORD,sora,${PROXY_GROUPS.SELECT}`,
+
+    // --- 3. Gemini 专属修复 ---
+    `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,bard.google.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com,${PROXY_GROUPS.SELECT}`,
+
+    // --- 4. YouTube 修复 ---
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-KEYWORD,youtube,${PROXY_GROUPS.SELECT}`,
 
     // 基础规则
     "RULE-SET,ADBlock,REJECT",
@@ -90,9 +109,13 @@ const baseRules=[
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
+function buildRules({quicEnabled:e}){
+    // 这里强制添加 UDP 443 REJECT 规则，忽略外部 quic 参数
+    const t=["AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", ...baseRules];
+    return t;
+}
 
-// ================= 5. DNS 配置 (DoH 强制代理模式) =================
+// ================= 5. DNS 配置 (DoH 强制代理) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     const dns = {
         enable: true,
@@ -103,25 +126,19 @@ function buildDnsConfig({mode:e, fakeIpFilter:t}) {
         "listen": ":1053",
         "use-hosts": true,
         
-        // 【关键配置1】代理节点域名解析服务器
-        // 必须配置！否则 Clash 无法解析机场域名，也就无法连接代理
-        // 必须使用国内 DNS，因为机场域名还没连上代理
+        // 确保 Clash 能解析机场域名
         "proxy-server-nameserver": [
             "223.5.5.5",
             "119.29.29.29"
         ],
 
-        // 【关键配置2】默认 Nameserver (只用 DoH)
-        // 放弃 UDP，使用 HTTPS。
-        // 配合上面的规则，Clash 会把这些 HTTPS 请求发给代理服务器。
-        // 移动宽带只能看到一堆乱码 TCP 流量，无法劫持。
+        // 国外走 DoH 代理 (防泄露)
         nameserver: [
             "https://8.8.8.8/dns-query",
             "https://1.1.1.1/dns-query"
         ],
         
-        // 【关键配置3】国内分流
-        // 国内域名走国内 DoH，直连速度快
+        // 国内走 DoH 直连 (保速度)
         "nameserver-policy": {
             "geosite:cn,private,apple,huawei,xiaomi": [
                 "https://223.5.5.5/dns-query",
@@ -129,12 +146,7 @@ function buildDnsConfig({mode:e, fakeIpFilter:t}) {
             ]
         },
 
-        // 【关键配置4】Fallback (留空)
-        // 既然我们已经指定了国外走 DoH 代理，国内走 DoH 直连，
-        // 就不需要 fallback 了，防止 fallback 乱跳到被劫持的 UDP 上。
         fallback: [],
-
-        // 辅助检测，防止污染
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
@@ -249,7 +261,8 @@ function main(e){
     const d = u.map(e => e.name);
     u.push({name:"GLOBAL",icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png","include-all":!0,type:"select",proxies:d});
 
-    const g = buildRules({quicEnabled:quicEnabled});
+    // 强制调用带 QUIC 阻断的规则生成函数
+    const g = buildRules({quicEnabled:false});
 
     if(fullConfig){
         Object.assign(t,{"mixed-port":7890,"redir-port":7892,"tproxy-port":7893,"routing-mark":7894,"allow-lan":!0,ipv6:ipv6Enabled,mode:"rule","unified-delay":!0,"tcp-concurrent":!0,"find-process-mode":"off","log-level":"info","geodata-loader":"standard","external-controller":":9999","disable-keep-alive":!keepAliveEnabled,profile:{"store-selected":!0}})
