@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (DNS强行代理+YouTube修复版)
+powerfullz 的 Substore 订阅转换脚本 (DoH防劫持+YouTube修复版)
 https://github.com/powerfullz/override-rules
 
-修复内容：
-1. [绝杀] 添加 IP-CIDR 规则，强制 8.8.8.8 的 DNS 流量走代理通道。彻底解决移动宽带 DNS 抢答/泄露问题。
-2. [修复] 显式添加 YouTube 图片域名 (ggpht.com) 规则，解决缩略图灰屏。
-3. [结构] 保持：选择代理 -> [前置/落地/手动/直连]。
+核心修复：
+1. [DNS] 启用 "proxy-server-nameserver" 确保节点解析正常。
+2. [DNS] 强制使用 DoH (HTTPS) 代替 UDP，彻底绕过移动宽带劫持。
+3. [DNS] 强制 Google DNS 流量走代理通道 (Anti-Leak)。
+4. [YouTube] 修复图片/头像加载问题。
 */
 
 // ================= 1. 核心底层 (保留) =================
@@ -35,14 +36,16 @@ const ruleProviders={
     Crypto:{type:"http",behavior:"classical",format:"text",interval:86400,url:"https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list",path:"./ruleset/Crypto.list"}
 };
 
-// ================= 4. 规则重定向 (核心修复区) =================
+// ================= 4. 规则重定向 =================
 const baseRules=[
-    // 【关键】强制 DNS 服务器的 IP 走代理
-    // 这样 8.8.8.8 的请求会被 Clash 捕获并封装进代理通道，ISP 无法劫持
+    // --- 核心防泄露规则 ---
+    // 强制 DoH 的 IP 走代理 (防止直接连接 8.8.8.8 被移动劫持)
     `IP-CIDR,8.8.8.8/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
+    `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN,cloudflare-dns.com,${PROXY_GROUPS.SELECT}`,
 
-    // 【关键】YouTube 图片/头像域名强制代理
+    // --- YouTube 修复 ---
     `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
@@ -89,39 +92,49 @@ const baseRules=[
 
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
-// ================= 5. DNS 配置 (强制代理模式) =================
+// ================= 5. DNS 配置 (DoH 强制代理模式) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     const dns = {
         enable: true,
         ipv6: false, 
-        "prefer-h3": false,
+        "prefer-h3": true,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
         
-        // 1. 默认 DNS (国外)
-        // 改回普通 UDP，配合上面的 IP-CIDR 规则
+        // 【关键配置1】代理节点域名解析服务器
+        // 必须配置！否则 Clash 无法解析机场域名，也就无法连接代理
+        // 必须使用国内 DNS，因为机场域名还没连上代理
+        "proxy-server-nameserver": [
+            "223.5.5.5",
+            "119.29.29.29"
+        ],
+
+        // 【关键配置2】默认 Nameserver (只用 DoH)
+        // 放弃 UDP，使用 HTTPS。
+        // 配合上面的规则，Clash 会把这些 HTTPS 请求发给代理服务器。
+        // 移动宽带只能看到一堆乱码 TCP 流量，无法劫持。
         nameserver: [
-            "8.8.8.8",
-            "1.1.1.1"
+            "https://8.8.8.8/dns-query",
+            "https://1.1.1.1/dns-query"
         ],
         
-        // 2. 国内分流 (保持速度)
+        // 【关键配置3】国内分流
+        // 国内域名走国内 DoH，直连速度快
         "nameserver-policy": {
             "geosite:cn,private,apple,huawei,xiaomi": [
-                "223.5.5.5",
-                "119.29.29.29"
+                "https://223.5.5.5/dns-query",
+                "https://doh.pub/dns-query"
             ]
         },
 
-        // 3. Fallback
-        fallback: [
-            "8.8.8.8",
-            "1.1.1.1"
-        ],
+        // 【关键配置4】Fallback (留空)
+        // 既然我们已经指定了国外走 DoH 代理，国内走 DoH 直连，
+        // 就不需要 fallback 了，防止 fallback 乱跳到被劫持的 UDP 上。
+        fallback: [],
 
-        // 4. 防污染
+        // 辅助检测，防止污染
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
