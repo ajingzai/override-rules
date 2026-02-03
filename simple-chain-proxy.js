@@ -1,15 +1,14 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (国内加速+防泄露版)
+powerfullz 的 Substore 订阅转换脚本 (速度修复平衡版)
 https://github.com/powerfullz/override-rules
 
 修改说明：
-1. [速度优化] 国内 DNS 回归 UDP (223.5.5.5)，解决国内网站打开慢的问题。
-2. [防泄露] 国外 DNS 保持 DoH (Google/CF) 并走代理，确保测试不泄露。
-3. [兼容性] 关闭了 prefer-h3 (HTTP/3) 实验性功能，提高解析稳定性。
-4. [完美分组] 保持：选择代理 -> [前置代理/落地节点/手动/直连]。
+1. [速度修复] 默认 DNS 改回阿里/腾讯 (UDP)，秒开国内所有中小网站。
+2. [防污染] 启用 fallback + geoip 机制。如果是国外网站，自动切换到加密 DNS，防止污染。
+3. [结构保持] 选择代理 -> [前置代理/落地节点/手动/直连]。
 */
 
-// ================= 1. 核心底层 (保留勿动) =================
+// ================= 1. 核心底层 (保留) =================
 const NODE_SUFFIX="节点";function parseBool(e){return"boolean"==typeof e?e:"string"==typeof e&&("true"===e.toLowerCase()||"1"===e)}function parseNumber(e,t=0){if(null==e)return t;const o=parseInt(e,10);return isNaN(o)?t:o}function buildFeatureFlags(e){const t=Object.entries({loadbalance:"loadBalance",landing:"landing",ipv6:"ipv6Enabled",full:"fullConfig",keepalive:"keepAliveEnabled",fakeip:"fakeIPEnabled",quic:"quicEnabled"}).reduce((t,[o,r])=>(t[r]=parseBool(e[o])||!1,t),{});return t.countryThreshold=parseNumber(e.threshold,0),t}const rawArgs="undefined"!=typeof $arguments?$arguments:{},{loadBalance:loadBalance,landing:landing,ipv6Enabled:ipv6Enabled,fullConfig:fullConfig,keepAliveEnabled:keepAliveEnabled,fakeIPEnabled:fakeIPEnabled,quicEnabled:quicEnabled,countryThreshold:countryThreshold}=buildFeatureFlags(rawArgs);function stripNodeSuffix(e){const t=new RegExp("节点$");return e.map(e=>e.replace(t,""))}const buildList=(...e)=>e.flat().filter(Boolean);
 
 // ================= 2. 组名定义 =================
@@ -77,39 +76,48 @@ const baseRules=[
 
 function buildRules({quicEnabled:e}){const t=[...baseRules];return e||t.unshift("AND,((DST-PORT,443),(NETWORK,UDP)),REJECT"),t}
 
-// ================= 5. DNS 配置 (速度+防泄露 优化) =================
+// ================= 5. DNS 配置 (速度平衡修复) =================
 function buildDnsConfig({mode:e, fakeIpFilter:t}) {
     const dns = {
         enable: true,
         ipv6: false, 
-        "prefer-h3": false, // 关闭 H3 提升国内解析速度稳定性
+        "prefer-h3": false,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
         
-        // 1. 默认 Nameserver (兜底/国外)
-        // 必须走代理，防止直接向 Google 发包被墙或泄露
+        // 【核心修改 1】主要 DNS：改回国内 DNS (UDP)
+        // 确保所有国内网站（包含小网站）都能毫秒级解析
         nameserver: [
+            "223.5.5.5",
+            "119.29.29.29"
+        ],
+        
+        // 【核心修改 2】回退 DNS：国外加密 DNS (DoH)
+        // 当主要 DNS 解析结果不对劲时，用这个
+        fallback: [
             "https://8.8.8.8/dns-query",
             "https://1.1.1.1/dns-query"
         ],
+
+        // 【核心修改 3】回退过滤器 (GeoIP)
+        // 逻辑：如果 nameserver (国内DNS) 返回了非 CN 的 IP，
+        // Clash 就会认为结果不可信（可能是污染，也可能是国外网站），
+        // 从而强制切换到 fallback (国外DoH) 去解析。
+        "fallback-filter": {
+            "geoip": true,
+            "geoip-code": "CN",
+            "ipcidr": ["240.0.0.0/4"]
+        },
         
-        // 2. 策略分流 (Nameserver Policy) - 加速核心
-        // 国内域名 -> 直接用 UDP 119.29.29.29 (极速，无握手延迟)
-        // 注意：因为测试网站(如dnsleaktest)是国外域名，它不会匹配到这里，所以不会泄露！
+        // 这里的 Policy 依然保留，作为已知域名的加速通道
         "nameserver-policy": {
-            "geosite:cn,private,apple,huawei,xiaomi": [
+            "geosite:cn,private": [
                 "223.5.5.5",
                 "119.29.29.29"
             ]
-        },
-
-        // 3. 引导 DNS
-        "default-nameserver": [
-            "223.5.5.5", 
-            "119.29.29.29"
-        ]
+        }
     };
 
     if (t) {
@@ -169,7 +177,7 @@ function buildProxyGroups(params){
     if (!landing) selectGroup["include-all"] = true; 
     groups.push(selectGroup);
 
-    // 第2组：前置代理 (仅 landing=true)
+    // 第2组：前置代理
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
@@ -180,7 +188,7 @@ function buildProxyGroups(params){
         });
     }
 
-    // 第3组：落地节点 (仅 landing=true)
+    // 第3组：落地节点
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
