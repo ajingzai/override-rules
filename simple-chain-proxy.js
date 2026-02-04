@@ -1,20 +1,35 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (极速秒开复刻版)
+powerfullz 的 Substore 订阅转换脚本 (经典前置/落地分组版)
 https://github.com/powerfullz/override-rules
 
 配置说明：
-1. [DNS复刻] 1:1 还原你提供的截图配置，使用腾讯/阿里 DoH 作为主力，配合 Fake-IP 实现全球秒开。
-2. [规则复刻] 使用 ACL4SSR 规则集，涵盖国内外几乎所有网站。
-3. [手动优化] 置顶了 Grok/Doubao/TikTok 规则，防止规则集更新不及时。
+1. [分组回归] 恢复“前置代理”和“落地节点”作为主入口的经典结构，逻辑最清晰。
+2. [内核保持] 继续使用 ACL4SSR 规则集 + 豆包/Grok 修复，保证分流精准。
+3. [速度保持] 延续国内 DoH DNS 配置，保证秒开。
 */
 
 // ================= 1. 基础工具 =================
-function parseBool(val) { return typeof val === "boolean" ? val : (typeof val === "string" && (val.toLowerCase() === "true" || val === "1")); }
+const NODE_SUFFIX = "节点";
+function parseBool(val) {
+    if (typeof val === "boolean") return val;
+    if (typeof val === "string") return val.toLowerCase() === "true" || val === "1";
+    return false;
+}
 const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
-const landing = parseBool(rawArgs.landing);
+const landing = parseBool(rawArgs.landing); // 记得开启 landing=true
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 规则集 (ACL4SSR 原版) =================
+// ================= 2. 组名定义 (经典版) =================
+const PROXY_GROUPS = {
+    SELECT: "🚀 节点选择",
+    FRONT: "⚡ 前置代理",
+    LANDING: "🛫 落地节点",
+    MANUAL: "🔄 手动切换",
+    DIRECT: "🎯 全球直连",
+    AUTO: "♻️ 自动选择"
+};
+
+// ================= 3. 规则集 (ACL4SSR) =================
 const ruleProviders = {
     LocalAreaNetwork: { url: "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/LocalAreaNetwork.list", path: "./ruleset/LocalAreaNetwork.list", behavior: "classical", interval: 86400, format: "text", type: "http" },
     UnBan: { url: "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/UnBan.list", path: "./ruleset/UnBan.list", behavior: "classical", interval: 86400, format: "text", type: "http" },
@@ -48,11 +63,11 @@ const ruleProviders = {
     Download: { url: "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Download.list", path: "./ruleset/Download.list", behavior: "classical", interval: 86400, format: "text", type: "http" }
 };
 
-// ================= 3. 规则配置 (Grok置顶 + ACL4SSR) =================
+// ================= 4. 规则配置 (Grok/豆包修复 + ACL4SSR) =================
 const baseRules = [
-    // 1. 特殊修复 (豆包/Grok/X)
-    "DOMAIN-SUFFIX,doubao.com,🎯 全球直连",
-    "DOMAIN-SUFFIX,volces.com,🎯 全球直连",
+    // 1. 特殊修复 (豆包/Grok/X) - 必须置顶
+    "DOMAIN-SUFFIX,doubao.com,DIRECT",
+    "DOMAIN-SUFFIX,volces.com,DIRECT",
     "DOMAIN-SUFFIX,grok.com,💬 OpenAi",
     "DOMAIN-SUFFIX,x.ai,💬 OpenAi",
     "DOMAIN-SUFFIX,x.com,🚀 节点选择",
@@ -61,8 +76,8 @@ const baseRules = [
     // 2. ACL4SSR 原版规则
     "RULE-SET,LocalAreaNetwork,🎯 全球直连",
     "RULE-SET,UnBan,🎯 全球直连",
-    "RULE-SET,BanAD,🛑 广告拦截",
-    "RULE-SET,BanProgramAD,🍃 应用净化",
+    "RULE-SET,BanAD,REJECT",
+    "RULE-SET,BanProgramAD,REJECT",
     "RULE-SET,GoogleFCM,📢 谷歌FCM",
     "RULE-SET,GoogleCN,🎯 全球直连",
     "RULE-SET,SteamCN,🎯 全球直连",
@@ -93,44 +108,34 @@ const baseRules = [
     "MATCH,🐟 漏网之鱼"
 ];
 
-// ================= 4. DNS 配置 (1:1 还原截图) =================
-// 核心秘密：全部走国内 DoH，配合 Fake-IP，速度极快
+// ================= 5. DNS 配置 (秒开不泄露) =================
 function buildDnsConfig() {
     return {
         enable: true,
-        ipv6: false, // 截图显示 IPv6 关闭
+        ipv6: false,
         "prefer-h3": true,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
         
-        // 1. 解析节点 IP：用国内 UDP (截图默认)
         "default-nameserver": ["223.5.5.5", "119.29.29.29"],
         
-        // 2. 主 DNS：用国内 DoH (截图配置)
-        // 这里的关键是：虽然填的是国内DNS，但因为是 Fake-IP，
-        // Clash 会直接返回假 IP，不会真的去等 DNS 结果，所以国外网站也能秒开。
+        // 核心：使用国内 DoH 加速 + Fake-IP
         nameserver: [
-            "https://doh.pub/dns-query",      // 腾讯 DoH
-            "https://dns.alidns.com/dns-query" // 阿里 DoH
+            "https://doh.pub/dns-query",      
+            "https://dns.alidns.com/dns-query" 
         ],
         
-        // 3. 代理 DNS：用于解析代理服务器域名
         "proxy-server-nameserver": [
             "https://doh.pub/dns-query",
             "https://dns.alidns.com/dns-query"
         ],
         
-        // 4. Fallback：截图里也填了国内的，或者留空
-        // 我们这里保持一致，不强制走 8.8.8.8，相信 Fake-IP 的能力
         fallback: [],
-        
-        // 5. 假 IP 过滤 (截图配置)
         "fake-ip-filter": [
             "*.lan", "*.local", "time.*.com", "ntp.*.com", "+.market.xiaomi.com", 
-            "*.stun.*.*", "*.stun.*.*.*",
-            "+.doubao.com", "+.volces.com" // 手动加几个AI的以防万一
+            "*.stun.*.*", "*.stun.*.*.*", "+.doubao.com", "+.volces.com"
         ]
     };
 }
@@ -143,7 +148,82 @@ const snifferConfig = {
     sniff: { TLS: { ports: [443, 8443] }, HTTP: { ports: [80, 8080, 8880] }, QUIC: { ports: [443, 8443] } }
 };
 
-// ================= 5. 辅助函数 =================
+// ================= 6. 策略组生成 (核心分组逻辑) =================
+function buildProxyGroups(params) {
+    const isLanding = params.landing;
+    const groups = [];
+
+    // 1. 定义核心分组结构
+    // 如果开启 landing，主选择器包含：前置、落地、手动、直连
+    const selectProxies = isLanding 
+        ? [PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, PROXY_GROUPS.DIRECT] 
+        : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, PROXY_GROUPS.DIRECT];
+
+    // 🚀 主节点选择
+    groups.push({
+        name: PROXY_GROUPS.SELECT,
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Proxy.png",
+        type: "select",
+        proxies: selectProxies
+    });
+
+    // ⚡ 前置代理 (如果开启 landing)
+    if (isLanding) {
+        groups.push({
+            name: PROXY_GROUPS.FRONT,
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
+            type: "select",
+            "include-all": true,
+            "exclude-filter": " -> 前置" // 前置组包含所有【未】被标记为前置的节点
+        });
+        
+        groups.push({
+            name: PROXY_GROUPS.LANDING,
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
+            type: "select",
+            "include-all": true,
+            filter: " -> 前置" // 落地组只包含被标记为前置(即落地)的节点
+        });
+    }
+
+    // 🔄 手动切换 & ♻️ 自动选择
+    groups.push({ name: PROXY_GROUPS.MANUAL, icon: "https://gcore.jsdelivr.net/gh/shindgewongxj/WHATSINStash@master/icon/select.png", "include-all": true, type: "select" });
+    groups.push({ name: PROXY_GROUPS.AUTO, icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", "include-all": true, type: "url-test", interval: 300, tolerance: 50 });
+    
+    // 🎯 直连
+    groups.push({ name: PROXY_GROUPS.DIRECT, icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png", type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
+
+    // === 功能分组 (全部指向主节点选择) ===
+    const commonProxies = [PROXY_GROUPS.SELECT, PROXY_GROUPS.AUTO];
+    if (isLanding) {
+        // 如果有前置/落地，也可以加进去，但通常指向 SELECT 最简单
+        // commonProxies.push(PROXY_GROUPS.FRONT);
+    }
+
+    groups.push({ name: "📲 电报消息", type: "select", proxies: commonProxies });
+    groups.push({ name: "💬 OpenAi", type: "select", proxies: commonProxies });
+    groups.push({ name: "📹 油管视频", type: "select", proxies: commonProxies });
+    groups.push({ name: "🎥 奈飞视频", type: "select", proxies: commonProxies });
+    groups.push({ name: "📺 巴哈姆特", type: "select", proxies: commonProxies });
+    groups.push({ name: "📺 哔哩哔哩", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    groups.push({ name: "🌍 国外媒体", type: "select", proxies: commonProxies });
+    groups.push({ name: "🌏 国内媒体", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    groups.push({ name: "📢 谷歌FCM", type: "select", proxies: commonProxies });
+    groups.push({ name: "Ⓜ️ 微软Bing", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    groups.push({ name: "Ⓜ️ 微软云盘", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    groups.push({ name: "Ⓜ️ 微软服务", type: "select", proxies: [PROXY_GROUPS.SELECT, "🎯 全球直连"] });
+    groups.push({ name: "🍎 苹果服务", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    groups.push({ name: "🎮 游戏平台", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    groups.push({ name: "🎶 网易音乐", type: "select", proxies: ["🎯 全球直连", PROXY_GROUPS.SELECT] });
+    
+    groups.push({ name: "🛑 广告拦截", type: "select", proxies: ["REJECT", "DIRECT"] });
+    groups.push({ name: "🍃 应用净化", type: "select", proxies: ["REJECT", "DIRECT"] });
+    groups.push({ name: "🐟 漏网之鱼", type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
+
+    return groups;
+}
+
+// 辅助函数：重命名
 function getCountryCode(name) {
     if (/香港|HK|Hong Kong/i.test(name)) return "HK";
     if (/台湾|TW|Taiwan/i.test(name)) return "TW";
@@ -154,7 +234,7 @@ function getCountryCode(name) {
     return "OT";
 }
 
-// ================= 6. 主程序 =================
+// ================= 7. 主程序 =================
 function main(e) {
     let rawProxies = e.proxies || [];
     let finalProxies = [];
@@ -168,15 +248,18 @@ function main(e) {
 
         if (p.name.includes(strictLandingKeyword)) {
             if (landing) {
+                // 如果开启 landing，落地节点强制加 dialer-proxy，名字加 "-> 前置"
+                // 这样它会被过滤进 【🛫 落地节点】 组
                 finalProxies.push({
                     ...p,
-                    "dialer-proxy": "🚀 前置代理", 
+                    "dialer-proxy": PROXY_GROUPS.FRONT,
                     name: `${p.name} -> 前置`
                 });
             } else {
                 finalProxies.push(p);
             }
         } else {
+            // 普通节点 (前置节点)
             const code = getCountryCode(p.name);
             if (!countryCounts[code]) countryCounts[code] = 0;
             countryCounts[code]++;
@@ -187,66 +270,7 @@ function main(e) {
         }
     });
 
-    const proxyNames = finalProxies.map(p => p.name);
-
-    // 2. 动态生成国家分组
-    const groupsHK = proxyNames.filter(n => n.startsWith("HK-"));
-    const groupsJP = proxyNames.filter(n => n.startsWith("JP-"));
-    const groupsUS = proxyNames.filter(n => n.startsWith("US-"));
-    const groupsTW = proxyNames.filter(n => n.startsWith("TW-"));
-    const groupsSG = proxyNames.filter(n => n.startsWith("SG-"));
-    const groupsKR = proxyNames.filter(n => n.startsWith("KR-"));
-
-    // 3. 构建 Proxy Groups (与 ACL4SSR 匹配)
-    const groups = [
-        {
-            name: "🚀 节点选择",
-            type: "select",
-            proxies: ["♻️ 自动选择", "🇭🇰 香港节点", "🇨🇳 台湾节点", "🇸🇬 狮城节点", "🇯🇵 日本节点", "🇺🇲 美国节点", "🇰🇷 韩国节点", "🚀 手动切换", "DIRECT"]
-        },
-        { name: "🚀 手动切换", type: "select", proxies: proxyNames }, 
-        { name: "♻️ 自动选择", type: "url-test", proxies: proxyNames, interval: 300, tolerance: 50 },
-        
-        { name: "📲 电报消息", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择", "🇸🇬 狮城节点", "🇭🇰 香港节点", "🇺🇲 美国节点"] },
-        { name: "💬 OpenAi", type: "select", proxies: ["🚀 节点选择", "🇺🇲 美国节点", "🇸🇬 狮城节点", "🇯🇵 日本节点"] },
-        { name: "📹 油管视频", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择", "🇭🇰 香港节点", "🇺🇲 美国节点", "🇯🇵 日本节点"] },
-        { name: "🎥 奈飞视频", type: "select", proxies: ["🚀 节点选择", "🎥 奈飞节点", "🇭🇰 香港节点", "🇸🇬 狮城节点"] },
-        { name: "📺 巴哈姆特", type: "select", proxies: ["🇨🇳 台湾节点", "🚀 节点选择"] },
-        { name: "📺 哔哩哔哩", type: "select", proxies: ["🎯 全球直连", "🇨🇳 台湾节点", "🇭🇰 香港节点"] },
-        { name: "🌍 国外媒体", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择"] },
-        { name: "🌏 国内媒体", type: "select", proxies: ["DIRECT", "🇭🇰 香港节点"] },
-        { name: "📢 谷歌FCM", type: "select", proxies: ["DIRECT", "🚀 节点选择", "🇺🇲 美国节点"] },
-        { name: "Ⓜ️ 微软Bing", type: "select", proxies: ["DIRECT", "🚀 节点选择", "🇺🇲 美国节点"] },
-        { name: "Ⓜ️ 微软云盘", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
-        { name: "Ⓜ️ 微软服务", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
-        { name: "🍎 苹果服务", type: "select", proxies: ["DIRECT", "🚀 节点选择", "🇺🇲 美国节点"] },
-        { name: "🎮 游戏平台", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
-        { name: "🎶 网易音乐", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
-        
-        { name: "🎯 全球直连", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
-        { name: "🛑 广告拦截", type: "select", proxies: ["REJECT", "DIRECT"] },
-        { name: "🍃 应用净化", type: "select", proxies: ["REJECT", "DIRECT"] },
-        { name: "🐟 漏网之鱼", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
-
-        { name: "🇭🇰 香港节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsHK.length > 0 ? groupsHK : ["DIRECT"] },
-        { name: "🇯🇵 日本节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsJP.length > 0 ? groupsJP : ["DIRECT"] },
-        { name: "🇺🇲 美国节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsUS.length > 0 ? groupsUS : ["DIRECT"] },
-        { name: "🇨🇳 台湾节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsTW.length > 0 ? groupsTW : ["DIRECT"] },
-        { name: "🇸🇬 狮城节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsSG.length > 0 ? groupsSG : ["DIRECT"] },
-        { name: "🇰🇷 韩国节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsKR.length > 0 ? groupsKR : ["DIRECT"] },
-        { name: "🎥 奈飞节点", type: "select", proxies: [...groupsSG, ...groupsHK, ...groupsUS] }
-    ];
-
-    if (landing) {
-        groups.push({
-            name: "🚀 前置代理",
-            type: "select",
-            proxies: proxyNames.filter(n => !n.includes("-> 前置"))
-        });
-        groups[0].proxies.push("🚀 前置代理");
-    }
-
-    // 4. 端口映射
+    // 2. 端口映射
     const autoListeners = [];
     let startPort = 8000;
     finalProxies.forEach(proxy => {
@@ -260,6 +284,10 @@ function main(e) {
         startPort++;
     });
 
+    const u = buildProxyGroups({ landing: landing });
+    const d = u.map(e => e.name);
+    u.push({name:"GLOBAL", icon:"https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png", "include-all":true, type:"select", proxies:d});
+
     const t = { 
         proxies: finalProxies,
         "mixed-port": 7890,
@@ -270,7 +298,7 @@ function main(e) {
         "tcp-concurrent": true,
         "global-client-fingerprint": "chrome",
         "listeners": autoListeners,
-        "proxy-groups": groups,
+        "proxy-groups": u,
         "rule-providers": ruleProviders,
         rules: baseRules,
         sniffer: snifferConfig,
