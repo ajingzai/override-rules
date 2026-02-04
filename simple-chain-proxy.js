@@ -1,12 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (图标修复+GLOBAL回归版)
+powerfullz 的 Substore 订阅转换脚本 (纯净图标版)
 https://github.com/powerfullz/override-rules
 
 配置说明：
-1. [图标修复] 全部分组统一使用 Qure 彩色图标库，解决图标缺失/对不齐问题。
-2. [GLOBAL] 显式保留 GLOBAL 分组。
-3. [分组逻辑] 保持极简结构 + 嵌套逻辑 (手动/前置 包含 自动)。
-4. [内核保持] 腾讯/阿里 DoH + Fake-IP 秒开方案。
+1. [视觉修复] 移除所有分组名称中的 Emoji，只保留高清彩色图标，解决“双图标”和“对不齐”问题。
+2. [界面整洁] 分组列表将完美左对齐，清爽干净。
+3. [功能保持] 秒开 DNS + 极简分组 + 自动重命名。
 */
 
 // ================= 1. 基础工具 =================
@@ -16,16 +15,16 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 =================
+// ================= 2. 核心组名定义 (去除了 Emoji) =================
 const PROXY_GROUPS = {
-    SELECT: "🚀 节点选择",
-    FRONT: "⚡ 前置代理",
-    LANDING: "🛫 落地节点",
-    MANUAL: "🔄 手动切换",
-    AUTO: "♻️ 自动选择",
-    DIRECT: "🎯 全球直连",
-    MATCH: "🐟 漏网之鱼",
-    GLOBAL: "GLOBAL" // 保留 GLOBAL
+    SELECT: "节点选择",
+    FRONT: "前置代理",
+    LANDING: "落地节点",
+    MANUAL: "手动切换",
+    AUTO: "自动选择",
+    DIRECT: "全球直连",
+    MATCH: "漏网之鱼",
+    GLOBAL: "GLOBAL"
 };
 
 // ================= 3. 规则集 (全内置) =================
@@ -100,12 +99,11 @@ function getCountryCode(name) {
     return "OT";
 }
 
-// ================= 7. 策略组生成 (统一图标) =================
+// ================= 7. 策略组生成 (纯净图标版) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
     
-    // 筛选
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
@@ -113,15 +111,15 @@ function buildProxyGroups(proxies, landing) {
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
 
-    // 1. 🚀 节点选择
+    // 1. 节点选择 (火箭图标)
     groups.push({
         name: PROXY_GROUPS.SELECT,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Rocket.png", // 统一用火箭
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Rocket.png",
         type: "select",
         proxies: mainProxies
     });
 
-    // 2. ♻️ 自动选择
+    // 2. 自动选择 (自动图标)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", 
@@ -131,10 +129,10 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 3. 🔄 手动切换
+    // 3. 手动切换 (列表/星星图标)
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Star.png", // 统一用星星/列表
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Star.png", 
         type: "select", 
         proxies: [PROXY_GROUPS.AUTO, ...proxyNames] 
     });
@@ -143,20 +141,20 @@ function buildProxyGroups(proxies, landing) {
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
-            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/World_Map.png", // 前置用地图
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/World_Map.png", // 地图
             type: "select",
             proxies: [PROXY_GROUPS.AUTO, ...frontProxies] 
         });
         
         groups.push({
             name: PROXY_GROUPS.LANDING,
-            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airplane.png", // 落地用飞机
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airplane.png", // 飞机
             type: "select",
             proxies: landingProxies.length ? landingProxies : ["DIRECT"]
         });
     }
 
-    // 5. 🎯 全球直连
+    // 5. 全球直连 (直连图标)
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png",
@@ -164,10 +162,10 @@ function buildProxyGroups(proxies, landing) {
         proxies: ["DIRECT", PROXY_GROUPS.SELECT] 
     });
 
-    // 6. 🐟 漏网之鱼
+    // 6. 漏网之鱼 (鱼图标)
     groups.push({
         name: PROXY_GROUPS.MATCH,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Fish.png", // 确保有鱼图标
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Fish.png",
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
@@ -179,6 +177,7 @@ function buildProxyGroups(proxies, landing) {
 function main(e) {
     let rawProxies = e.proxies || [];
     let finalProxies = [];
+    const countryCounts = {};
     const excludeKeywords = /套餐|官网|剩余|时间|节点|重置|异常|邮箱|网址|Traffic|Expire|Reset/i;
     const strictLandingKeyword = "落地";
 
@@ -195,25 +194,6 @@ function main(e) {
             } else {
                 finalProxies.push(p);
             }
-        } else {
-            const code = getCountryCode(p.name);
-            finalProxies.push({
-                ...p,
-                name: `${code}-${p.name.replace(/^(.*?)[\u4e00-\u9fa5]+.*$/, '$1') || '01'}` // 简单保留部分原名或编号
-            });
-        }
-    });
-    
-    // 重新编号逻辑 (如果你想要 HK-01 这种纯净名字，可以用下面这段替换上面的 else 块)
-    // 这里为了不破坏你可能喜欢的原名，暂时保留了一点原名逻辑。
-    // 如果想要纯 HK-01，请告诉我，我立刻改回纯计数模式。
-    // 修正：既然你之前要求 HK-01，这里强制改回纯计数模式，确保名字整齐
-    finalProxies = [];
-    const countryCounts = {};
-    rawProxies.forEach(p => {
-        if (excludeKeywords.test(p.name)) return;
-        if (p.name.includes(strictLandingKeyword) && landing) {
-             finalProxies.push({ ...p, "dialer-proxy": PROXY_GROUPS.FRONT, name: `${p.name} -> 前置` });
         } else {
             const code = getCountryCode(p.name);
             if (!countryCounts[code]) countryCounts[code] = 0;
@@ -241,8 +221,7 @@ function main(e) {
 
     const u = buildProxyGroups(finalProxies, landing);
     
-    // 7. GLOBAL 组 (显式添加，满足你的要求)
-    // 赋予 GLOBAL 一个地球图标
+    // 7. GLOBAL 组 (地球图标)
     const allProxyNames = finalProxies.map(p => p.name);
     u.push({
         name: "GLOBAL", 
