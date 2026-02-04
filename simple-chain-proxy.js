@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (图标补全版)
+powerfullz 的 Substore 订阅转换脚本 (图标源修复版)
 https://github.com/powerfullz/override-rules
 
 配置说明：
-1. [图标修复] 补全了“落地节点”和“漏网之鱼”缺失的图标，现在所有分组都有图标了。
-2. [界面整洁] 分组列表左对齐，清爽干净。
+1. [图标修复] 彻底更换图标源为更稳定的 MetaCubeX 库，解决图标加载失败/空白问题。
+2. [界面整洁] 保持无 Emoji 纯净风格。
 3. [功能保持] 秒开 DNS + 极简分组 + 自动重命名。
 */
 
@@ -99,7 +99,7 @@ function getCountryCode(name) {
     return "OT";
 }
 
-// ================= 7. 策略组生成 (完美图标) =================
+// ================= 7. 策略组生成 (更换图标源) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
@@ -111,28 +111,28 @@ function buildProxyGroups(proxies, landing) {
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
 
-    // 1. 节点选择 (火箭)
+    // 1. 节点选择 (火箭) - 使用 fastly.jsdelivr 源，通常更稳
     groups.push({
         name: PROXY_GROUPS.SELECT,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Rocket.png",
+        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/rocket.svg", 
         type: "select",
         proxies: mainProxies
     });
 
-    // 2. 自动选择 (自动)
+    // 2. 自动选择 (闪电/WiFi)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", 
+        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg", 
         type: "url-test", 
         proxies: proxyNames, 
         interval: 300, 
         tolerance: 50 
     });
 
-    // 3. 手动切换 (星星/列表)
+    // 3. 手动切换 (列表)
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Star.png", 
+        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg", 
         type: "select", 
         proxies: [PROXY_GROUPS.AUTO, ...proxyNames] 
     });
@@ -141,31 +141,31 @@ function buildProxyGroups(proxies, landing) {
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
-            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/World_Map.png", // 地图
+            icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg", // 链接图标
             type: "select",
             proxies: [PROXY_GROUPS.AUTO, ...frontProxies] 
         });
         
         groups.push({
             name: PROXY_GROUPS.LANDING,
-            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airplane.png", // 飞机 (补全)
+            icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/airplane.svg", // 飞机图标
             type: "select",
             proxies: landingProxies.length ? landingProxies : ["DIRECT"]
         });
     }
 
-    // 5. 全球直连 (靶心)
+    // 5. 全球直连 (圆圈)
     groups.push({
         name: PROXY_GROUPS.DIRECT,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png",
+        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/check.svg",
         type: "select",
         proxies: ["DIRECT", PROXY_GROUPS.SELECT] 
     });
 
-    // 6. 漏网之鱼 (鱼)
+    // 6. 漏网之鱼 (鱼/网)
     groups.push({
         name: PROXY_GROUPS.MATCH,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Fish.png", // 鱼 (补全)
+        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg", // 用个Bug图标代表漏网
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
@@ -221,11 +221,11 @@ function main(e) {
 
     const u = buildProxyGroups(finalProxies, landing);
     
-    // 7. GLOBAL 组 (地球图标)
+    // 7. GLOBAL 组 (地球)
     const allProxyNames = finalProxies.map(p => p.name);
     u.push({
         name: "GLOBAL", 
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Global.png",
+        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/globe.svg",
         type: "select", 
         proxies: allProxyNames
     });
