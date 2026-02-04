@@ -1,15 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (电报分组增强版)
+powerfullz 的 Substore 订阅转换脚本 (电报分组 + 负载均衡增强版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [新增分组] 增加 "06. 电报消息"，规则指向 Telegram 相关流量。
-2. [同步选项] 电报分组的可选节点与 "01. 节点选择" 保持一致。
-3. [排序调整] 
-   - 01-05 保持不变
-   - 06. 电报消息 (新增)
-   - 07. 漏网之鱼 (原06)
-   - 08. 全球直连 (原07)
+1. [新增分组] "03. 负载均衡"，类型为 load-balance，用于聚合前置节点流量。
+2. [前置增强] "04. 前置代理" 中加入了负载均衡选项。
+3. [序号重排] 插入新分组后，后续分组序号自动顺延。
 */
 
 // ================= 1. 基础工具 =================
@@ -18,16 +14,17 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 (排序顺延) =================
+// ================= 2. 核心组名定义 (序号重排) =================
 const PROXY_GROUPS = {
     SELECT:   "01. 节点选择",
     AUTO:     "02. 自动选择",
-    FRONT:    "03. 前置代理",
-    LANDING:  "04. 落地节点",
-    MANUAL:   "05. 手动切换",
-    TELEGRAM: "06. 电报消息", // <--- 新增
-    MATCH:    "07. 漏网之鱼", // 06 -> 07
-    DIRECT:   "08. 全球直连", // 07 -> 08
+    LB:       "03. 负载均衡", // <--- 新增
+    FRONT:    "04. 前置代理", // 03 -> 04
+    LANDING:  "05. 落地节点", // 04 -> 05
+    MANUAL:   "06. 手动切换", // 05 -> 06
+    TELEGRAM: "07. 电报消息", // 06 -> 07
+    MATCH:    "08. 漏网之鱼", // 07 -> 08
+    DIRECT:   "09. 全球直连", // 08 -> 09
     GLOBAL:   "GLOBAL" 
 };
 
@@ -48,14 +45,13 @@ const baseRules = [
     `DOMAIN-SUFFIX,sensetime.com,${PROXY_GROUPS.DIRECT}`,
     
     // --- 2. 电报专属 (Telegram) ---
-    // 将 TG 流量全部指派给新分组
     `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,tdesktop.com,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,tx.me,${PROXY_GROUPS.TELEGRAM}`,
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
-    `IP-CIDR,5.28.192.0/18,${PROXY_GROUPS.TELEGRAM},no-resolve`, // 补充常用 TG IP 段
+    `IP-CIDR,5.28.192.0/18,${PROXY_GROUPS.TELEGRAM},no-resolve`,
 
     // --- 3. 国外 AI (强制代理) ---
     `DOMAIN-SUFFIX,grok.com,${PROXY_GROUPS.SELECT}`,
@@ -156,8 +152,8 @@ function buildProxyGroups(proxies, landing) {
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
     const mainProxies = landing 
-        ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"]
-        : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
+        ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"]
+        : [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, PROXY_GROUPS.MANUAL, "DIRECT"];
 
     // 01. 节点选择
     groups.push({
@@ -166,7 +162,7 @@ function buildProxyGroups(proxies, landing) {
         proxies: mainProxies
     });
 
-    // 02. 自动选择
+    // 02. 自动选择 (URL-Test)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         type: "url-test", 
@@ -175,16 +171,27 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 前置代理
+    // 03. 负载均衡 (Load-Balance) [新增]
+    groups.push({
+        name: PROXY_GROUPS.LB,
+        type: "load-balance",
+        strategy: "consistent-hashing", // 推荐使用一致性哈希，避免 IP 跳动
+        url: "http://www.gstatic.com/generate_204",
+        interval: 300,
+        proxies: frontProxies
+    });
+
+    // 04. 前置代理 (Landing模式启用)
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
             type: "select",
-            proxies: [PROXY_GROUPS.AUTO, ...frontProxies] 
+            // 允许选择: 自动选择 / 负载均衡 / 具体节点
+            proxies: [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, ...frontProxies] 
         });
     }
 
-    // 04. 落地节点
+    // 05. 落地节点 (Landing模式启用)
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
@@ -193,28 +200,28 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 05. 手动切换
+    // 06. 手动切换
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
         type: "select", 
-        proxies: [PROXY_GROUPS.AUTO, ...frontProxies]
+        proxies: [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, ...frontProxies]
     });
 
-    // 06. 电报消息 (新增，节点选项与 01 保持一致)
+    // 07. 电报消息
     groups.push({
         name: PROXY_GROUPS.TELEGRAM,
         type: "select",
         proxies: mainProxies 
     });
 
-    // 07. 漏网之鱼
+    // 08. 漏网之鱼
     groups.push({
         name: PROXY_GROUPS.MATCH,
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
 
-    // 08. 全球直连
+    // 09. 全球直连
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         type: "select",
@@ -229,7 +236,7 @@ function main(e) {
     let rawProxies = e.proxies || [];
     let finalProxies = [];
     const excludeKeywords = /套餐|官网|剩余|时间|节点|重置|异常|邮箱|网址|Traffic|Expire|Reset/i;
-    const strictLandingKeyword = "落地";
+    const strictLandingKeyword = "落地"; // 识别落地的关键词
 
     rawProxies.forEach(p => {
         if (excludeKeywords.test(p.name)) return;
@@ -238,7 +245,7 @@ function main(e) {
             if (landing) {
                 finalProxies.push({
                     ...p,
-                    "dialer-proxy": PROXY_GROUPS.FRONT,
+                    "dialer-proxy": PROXY_GROUPS.FRONT, // 落地节点指向 [04. 前置代理]
                     name: `${p.name} -> 前置`
                 });
             } else {
