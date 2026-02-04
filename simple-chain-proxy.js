@@ -1,14 +1,15 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (自定义排序版)
+powerfullz 的 Substore 订阅转换脚本 (电报分组增强版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [排序调整] 
-   - 03. 前置代理 (原04)
-   - 04. 落地节点 (原05)
-   - 05. 手动切换 (原03)
-2. [视觉流线] 界面顺序：节点选择 -> 自动 -> 前置 -> 落地 -> 手动 -> 漏网 -> 直连。
-3. [核心保持] 规则/DNS/落地逻辑/原名显示全部不变。
+1. [新增分组] 增加 "06. 电报消息"，规则指向 Telegram 相关流量。
+2. [同步选项] 电报分组的可选节点与 "01. 节点选择" 保持一致。
+3. [排序调整] 
+   - 01-05 保持不变
+   - 06. 电报消息 (新增)
+   - 07. 漏网之鱼 (原06)
+   - 08. 全球直连 (原07)
 */
 
 // ================= 1. 基础工具 =================
@@ -17,16 +18,17 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 (排序调整) =================
+// ================= 2. 核心组名定义 (排序顺延) =================
 const PROXY_GROUPS = {
-    SELECT:  "01. 节点选择",
-    AUTO:    "02. 自动选择",
-    FRONT:   "03. 前置代理", // 04 -> 03
-    LANDING: "04. 落地节点", // 05 -> 04
-    MANUAL:  "05. 手动切换", // 03 -> 05
-    MATCH:   "06. 漏网之鱼",
-    DIRECT:  "07. 全球直连",
-    GLOBAL:  "GLOBAL" 
+    SELECT:   "01. 节点选择",
+    AUTO:     "02. 自动选择",
+    FRONT:    "03. 前置代理",
+    LANDING:  "04. 落地节点",
+    MANUAL:   "05. 手动切换",
+    TELEGRAM: "06. 电报消息", // <--- 新增
+    MATCH:    "07. 漏网之鱼", // 06 -> 07
+    DIRECT:   "08. 全球直连", // 07 -> 08
+    GLOBAL:   "GLOBAL" 
 };
 
 // ================= 3. 规则配置 (硬编码) =================
@@ -45,7 +47,17 @@ const baseRules = [
     `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,sensetime.com,${PROXY_GROUPS.DIRECT}`,
     
-    // --- 2. 国外 AI (强制代理) ---
+    // --- 2. 电报专属 (Telegram) ---
+    // 将 TG 流量全部指派给新分组
+    `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
+    `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
+    `DOMAIN-SUFFIX,tdesktop.com,${PROXY_GROUPS.TELEGRAM}`,
+    `DOMAIN-SUFFIX,tx.me,${PROXY_GROUPS.TELEGRAM}`,
+    `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
+    `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
+    `IP-CIDR,5.28.192.0/18,${PROXY_GROUPS.TELEGRAM},no-resolve`, // 补充常用 TG IP 段
+
+    // --- 3. 国外 AI (强制代理) ---
     `DOMAIN-SUFFIX,grok.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,x.ai,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
@@ -64,10 +76,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,huggingface.co,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,civitai.com,${PROXY_GROUPS.SELECT}`,
 
-    // --- 3. 国际社交 (代理) ---
-    `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.SELECT}`,
-    `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.SELECT},no-resolve`,
+    // --- 4. 国际社交 (代理) ---
     `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
@@ -77,7 +86,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,reddit.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,discord.com,${PROXY_GROUPS.SELECT}`,
 
-    // --- 4. 国际流媒体 (代理) ---
+    // --- 5. 国际流媒体 (代理) ---
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.SELECT}`,
@@ -85,17 +94,17 @@ const baseRules = [
     `DOMAIN-SUFFIX,spotify.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`,
 
-    // --- 5. 开发/技术 (代理) ---
+    // --- 6. 开发/技术 (代理) ---
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,docker.com,${PROXY_GROUPS.SELECT}`,
 
-    // --- 6. 国际搜索 (代理) ---
+    // --- 7. 国际搜索 (代理) ---
     `DOMAIN-SUFFIX,google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,wikipedia.org,${PROXY_GROUPS.SELECT}`,
 
-    // --- 7. 国内直连 (Direct) ---
+    // --- 8. 国内直连 (Direct) ---
     `DOMAIN-SUFFIX,qq.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,aliyun.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
@@ -104,7 +113,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,12306.cn,${PROXY_GROUPS.DIRECT}`,
     
-    // --- 8. 兜底 ---
+    // --- 9. 兜底 ---
     `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
@@ -138,7 +147,7 @@ const snifferConfig = {
     sniff: { TLS: { ports: [443, 8443] }, HTTP: { ports: [80, 8080, 8880] }, QUIC: { ports: [443, 8443] } }
 };
 
-// ================= 5. 策略组生成 (新顺序) =================
+// ================= 5. 策略组生成 =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
@@ -157,7 +166,7 @@ function buildProxyGroups(proxies, landing) {
         proxies: mainProxies
     });
 
-    // 02. 自动选择 (前置)
+    // 02. 自动选择
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         type: "url-test", 
@@ -166,7 +175,7 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 前置代理 (新顺序：排第三)
+    // 03. 前置代理
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
@@ -175,7 +184,7 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 04. 落地节点 (新顺序：排第四)
+    // 04. 落地节点
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
@@ -184,21 +193,28 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 05. 手动切换 (新顺序：排第五)
+    // 05. 手动切换
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
         type: "select", 
         proxies: [PROXY_GROUPS.AUTO, ...frontProxies]
     });
 
-    // 06. 漏网之鱼
+    // 06. 电报消息 (新增，节点选项与 01 保持一致)
+    groups.push({
+        name: PROXY_GROUPS.TELEGRAM,
+        type: "select",
+        proxies: mainProxies 
+    });
+
+    // 07. 漏网之鱼
     groups.push({
         name: PROXY_GROUPS.MATCH,
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
 
-    // 07. 全球直连
+    // 08. 全球直连
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         type: "select",
