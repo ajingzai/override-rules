@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (图标源修复版)
+powerfullz 的 Substore 订阅转换脚本 (无图纯净版)
 https://github.com/powerfullz/override-rules
 
 配置说明：
-1. [图标修复] 彻底更换图标源为更稳定的 MetaCubeX 库，解决图标加载失败/空白问题。
-2. [界面整洁] 保持无 Emoji 纯净风格。
-3. [功能保持] 秒开 DNS + 极简分组 + 自动重命名。
+1. [界面纯净] 彻底移除了所有图标，纯文字显示，整齐且无加载问题。
+2. [逻辑优化] "自动选择" 分组现在会自动排除所有落地节点，只优选前置节点。
+3. [内核保持] 秒开 DNS + 极简分组 + 自动重命名。
 */
 
 // ================= 1. 基础工具 =================
@@ -99,40 +99,39 @@ function getCountryCode(name) {
     return "OT";
 }
 
-// ================= 7. 策略组生成 (更换图标源) =================
+// ================= 7. 策略组生成 (无图+逻辑优化) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
     
+    // 筛选前置节点 (纯净节点，无 "-> 前置" 后缀)
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
+    // 筛选落地节点 (带后缀)
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
     const mainProxies = landing 
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
 
-    // 1. 节点选择 (火箭) - 使用 fastly.jsdelivr 源，通常更稳
+    // 1. 节点选择
     groups.push({
         name: PROXY_GROUPS.SELECT,
-        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/rocket.svg", 
         type: "select",
         proxies: mainProxies
     });
 
-    // 2. 自动选择 (闪电/WiFi)
+    // 2. 自动选择 (关键修改：只包含 frontProxies，排除落地节点)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
-        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg", 
         type: "url-test", 
-        proxies: proxyNames, 
+        proxies: frontProxies, // <--- 这里只放前置节点
         interval: 300, 
         tolerance: 50 
     });
 
-    // 3. 手动切换 (列表)
+    // 3. 手动切换 (依然包含全部，方便你手动选落地)
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
-        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg", 
         type: "select", 
         proxies: [PROXY_GROUPS.AUTO, ...proxyNames] 
     });
@@ -141,31 +140,27 @@ function buildProxyGroups(proxies, landing) {
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
-            icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg", // 链接图标
             type: "select",
             proxies: [PROXY_GROUPS.AUTO, ...frontProxies] 
         });
         
         groups.push({
             name: PROXY_GROUPS.LANDING,
-            icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/airplane.svg", // 飞机图标
             type: "select",
             proxies: landingProxies.length ? landingProxies : ["DIRECT"]
         });
     }
 
-    // 5. 全球直连 (圆圈)
+    // 5. 全球直连
     groups.push({
         name: PROXY_GROUPS.DIRECT,
-        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/check.svg",
         type: "select",
         proxies: ["DIRECT", PROXY_GROUPS.SELECT] 
     });
 
-    // 6. 漏网之鱼 (鱼/网)
+    // 6. 漏网之鱼
     groups.push({
         name: PROXY_GROUPS.MATCH,
-        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg", // 用个Bug图标代表漏网
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
@@ -221,11 +216,10 @@ function main(e) {
 
     const u = buildProxyGroups(finalProxies, landing);
     
-    // 7. GLOBAL 组 (地球)
+    // 7. GLOBAL 组
     const allProxyNames = finalProxies.map(p => p.name);
     u.push({
         name: "GLOBAL", 
-        icon: "https://fastly.jsdelivr.net/gh/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/globe.svg",
         type: "select", 
         proxies: allProxyNames
     });
