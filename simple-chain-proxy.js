@@ -1,11 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (修复版 - 兼容 Emoji 国旗)
+powerfullz 的 Substore 订阅转换脚本 (香港独享版)
 https://github.com/powerfullz/override-rules
 
-更新日志：
-1. [修复] 增加国旗 Emoji (🇭🇰/🇸🇬) 识别，防止因正则匹配失败导致节点消失。
-2. [保底] 如果筛选不出低延迟节点，强制回退到所有节点，绝不留空。
-3. [结构] 保持之前的负载均衡和落地前置逻辑。
+配置变更：
+1. [负载均衡] 严格筛选：只允许香港 (HK) 节点进入负载均衡池。
+2. [保底机制] 如果没有香港节点，自动回退到所有前置节点，防止列表消失。
 */
 
 // ================= 1. 基础工具 =================
@@ -62,41 +61,34 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (修复版) =================
+// ================= 5. 策略组生成 (香港独享版) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     
-    // 安全检查：如果传入的 proxies 为空，防止崩溃
-    if (!proxies || proxies.length === 0) {
-        return [];
-    }
+    // 安全检查
+    if (!proxies || proxies.length === 0) return [];
 
     const proxyNames = proxies.map(p => p.name);
     
-    // 原始分类
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 【修复核心】增强正则，包含国旗 Emoji
-    // 匹配：香港, HK, 🇭🇰, 新加坡, SG, 🇸🇬
-    const regionRegex = /香港|HK|Hong Kong|🇭🇰|新加坡|SG|Singapore|狮城|🇸🇬/i;
+    // 【关键修改】只匹配香港
+    const regionRegex = /香港|HK|Hong Kong|🇭🇰/i;
     
-    // 筛选低延迟节点
+    // 筛选
     let fastProxies = frontProxies.filter(n => regionRegex.test(n));
 
     // 【保底逻辑】
-    // 1. 如果正则没匹配到任何节点 (比如全是日本节点)，就用所有前置节点。
-    // 2. 如果连前置节点都没有，给一个 DIRECT 防止报错。
     let lbProxies = [];
     if (fastProxies.length > 0) {
-        lbProxies = fastProxies;
+        lbProxies = fastProxies; // 优先用香港
     } else if (frontProxies.length > 0) {
-        lbProxies = frontProxies;
+        lbProxies = frontProxies; // 没香港就用全部
     } else {
-        lbProxies = ["DIRECT"]; // 终极保底
+        lbProxies = ["DIRECT"]; // 啥都没就直连
     }
 
-    // 主列表
     const mainProxies = landing 
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, PROXY_GROUPS.MANUAL, "DIRECT"];
@@ -117,14 +109,14 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 负载均衡 (修复后)
+    // 03. 负载均衡 (香港独享)
     groups.push({
         name: PROXY_GROUPS.LB,
         type: "load-balance",
         strategy: "consistent-hashing",
         url: "http://www.gstatic.com/generate_204",
         interval: 300,
-        proxies: lbProxies // 使用带有保底的列表
+        proxies: lbProxies 
     });
 
     // 04. 前置代理
@@ -152,11 +144,9 @@ function buildProxyGroups(proxies, landing) {
         proxies: [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, ...frontProxies]
     });
 
-    // 07. 电报消息
+    // 07, 08, 09
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
-    // 08. 漏网之鱼
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
-    // 09. 全球直连
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
 
     return groups;
@@ -167,7 +157,6 @@ function main(e) {
     try {
         let rawProxies = e.proxies || [];
         let finalProxies = [];
-        // 排除某些不可用的节点名
         const excludeKeywords = /套餐|官网|剩余|时间|重置|异常|邮箱|网址/i;
         const strictLandingKeyword = "落地"; 
 
@@ -189,10 +178,7 @@ function main(e) {
             }
         });
 
-        // 如果最后没有任何节点，直接返回原配置防止清空
-        if (finalProxies.length === 0) {
-            return e; 
-        }
+        if (finalProxies.length === 0) return e; 
 
         const autoListeners = [];
         let startPort = 8000;
@@ -209,7 +195,6 @@ function main(e) {
 
         const u = buildProxyGroups(finalProxies, landing);
         
-        // GLOBAL 组
         const allProxyNames = finalProxies.map(p => p.name);
         u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
 
@@ -228,7 +213,6 @@ function main(e) {
             dns: buildDnsConfig()
         };
     } catch (error) {
-        // 如果脚本炸了，至少返回原始配置，不要让列表消失
         console.log("Script Error: " + error);
         return e;
     }
