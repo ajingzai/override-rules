@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (完美排序版)
+powerfullz 的 Substore 订阅转换脚本 (数字排序版)
 https://github.com/powerfullz/override-rules
 
-配置变更：
-1. [排序优化] 调整了分组顺序：节点选择 -> 自动 -> 前置 -> 落地 -> 手动 -> 漏网 -> 直连。
-2. [视觉舒适] 最常用的分组在最上面，不再需要满屏幕找。
-3. [功能保持] 原名显示 + 落地链式 + 硬编码规则 + 秒开 DNS。
+配置说明：
+1. [强制排序] 给分组名添加 "01. 02." 前缀，彻底解决客户端乱序问题。
+2. [视觉顺序] 01.节点选择 -> 02.自动 -> 03.手动 -> 04.前置 -> 05.落地 -> 06.漏网 -> 07.直连。
+3. [核心保持] 规则/DNS/落地逻辑不变。
 */
 
 // ================= 1. 基础工具 =================
@@ -14,16 +14,16 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 =================
+// ================= 2. 核心组名定义 (数字前缀强制排序) =================
 const PROXY_GROUPS = {
-    SELECT: "节点选择",
-    FRONT: "前置代理",
-    LANDING: "落地节点",
-    MANUAL: "手动切换",
-    AUTO: "自动选择",
-    DIRECT: "全球直连",
-    MATCH: "漏网之鱼",
-    GLOBAL: "GLOBAL"
+    SELECT:  "01. 节点选择",
+    AUTO:    "02. 自动选择",
+    MANUAL:  "03. 手动切换",
+    FRONT:   "04. 前置代理",
+    LANDING: "05. 落地节点",
+    MATCH:   "06. 漏网之鱼",
+    DIRECT:  "07. 全球直连",
+    GLOBAL:  "GLOBAL" 
 };
 
 // ================= 3. 规则配置 (硬编码) =================
@@ -94,11 +94,12 @@ const snifferConfig = {
     sniff: { TLS: { ports: [443, 8443] }, HTTP: { ports: [80, 8080, 8880] }, QUIC: { ports: [443, 8443] } }
 };
 
-// ================= 5. 策略组生成 (排序逻辑核心) =================
+// ================= 5. 策略组生成 =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
     
+    // 筛选
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
@@ -106,25 +107,30 @@ function buildProxyGroups(proxies, landing) {
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
 
-    // --- 排序开始：这里的顺序决定了界面的显示顺序 ---
-
-    // 1. [Top] 节点选择 (主入口)
+    // 01. 节点选择
     groups.push({
         name: PROXY_GROUPS.SELECT,
         type: "select",
         proxies: mainProxies
     });
 
-    // 2. 自动选择 (常用)
+    // 02. 自动选择 (只含前置)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         type: "url-test", 
-        proxies: frontProxies, // 只含前置
+        proxies: frontProxies,
         interval: 300, 
         tolerance: 50 
     });
 
-    // 3. 前置代理 (关键链路)
+    // 03. 手动切换 (只含前置+自动)
+    groups.push({ 
+        name: PROXY_GROUPS.MANUAL, 
+        type: "select", 
+        proxies: [PROXY_GROUPS.AUTO, ...frontProxies]
+    });
+
+    // 04. 前置代理
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
@@ -133,7 +139,7 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 4. 落地节点 (关键链路)
+    // 05. 落地节点
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
@@ -142,21 +148,14 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 5. 手动切换 (备用)
-    groups.push({ 
-        name: PROXY_GROUPS.MANUAL, 
-        type: "select", 
-        proxies: [PROXY_GROUPS.AUTO, ...frontProxies]
-    });
-
-    // 6. 漏网之鱼 (兜底)
+    // 06. 漏网之鱼
     groups.push({
         name: PROXY_GROUPS.MATCH,
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
 
-    // 7. [Bottom] 全球直连 (基本不看)
+    // 07. 全球直连
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         type: "select",
@@ -207,7 +206,7 @@ function main(e) {
 
     const u = buildProxyGroups(finalProxies, landing);
     
-    // 8. GLOBAL 组 (最后)
+    // GLOBAL 组
     const allProxyNames = finalProxies.map(p => p.name);
     u.push({
         name: "GLOBAL", 
