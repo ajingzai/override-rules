@@ -1,25 +1,20 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (ACL4SSR 复刻版)
+powerfullz 的 Substore 订阅转换脚本 (极速秒开复刻版)
 https://github.com/powerfullz/override-rules
 
-核心逻辑：
-1. [规则复刻] 完全照搬 ACL4SSR 的 Rule-Providers 和 Rules，确保分流逻辑与你提供的文件一致。
-2. [DNS重写] 使用 Fake-IP + 分流策略 (国外8.8.8.8 / 国内223.5.5.5)，配合 Rules 实现极速。
-3. [功能保留] 链式代理、端口映射、自动重命名。
+配置说明：
+1. [DNS复刻] 1:1 还原你提供的截图配置，使用腾讯/阿里 DoH 作为主力，配合 Fake-IP 实现全球秒开。
+2. [规则复刻] 使用 ACL4SSR 规则集，涵盖国内外几乎所有网站。
+3. [手动优化] 置顶了 Grok/Doubao/TikTok 规则，防止规则集更新不及时。
 */
 
 // ================= 1. 基础工具 =================
-const NODE_SUFFIX = "节点";
-function parseBool(val) {
-    if (typeof val === "boolean") return val;
-    if (typeof val === "string") return val.toLowerCase() === "true" || val === "1";
-    return false;
-}
+function parseBool(val) { return typeof val === "boolean" ? val : (typeof val === "string" && (val.toLowerCase() === "true" || val === "1")); }
 const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing);
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 规则集定义 (完全照搬 ACL4SSR) =================
+// ================= 2. 规则集 (ACL4SSR 原版) =================
 const ruleProviders = {
     LocalAreaNetwork: { url: "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/LocalAreaNetwork.list", path: "./ruleset/LocalAreaNetwork.list", behavior: "classical", interval: 86400, format: "text", type: "http" },
     UnBan: { url: "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/UnBan.list", path: "./ruleset/UnBan.list", behavior: "classical", interval: 86400, format: "text", type: "http" },
@@ -53,15 +48,17 @@ const ruleProviders = {
     Download: { url: "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Download.list", path: "./ruleset/Download.list", behavior: "classical", interval: 86400, format: "text", type: "http" }
 };
 
-// ================= 3. 规则 (照搬 ACL4SSR) =================
+// ================= 3. 规则配置 (Grok置顶 + ACL4SSR) =================
 const baseRules = [
-    // 手动置顶 Grok/X 防止规则集漏网
+    // 1. 特殊修复 (豆包/Grok/X)
+    "DOMAIN-SUFFIX,doubao.com,🎯 全球直连",
+    "DOMAIN-SUFFIX,volces.com,🎯 全球直连",
     "DOMAIN-SUFFIX,grok.com,💬 OpenAi",
     "DOMAIN-SUFFIX,x.ai,💬 OpenAi",
     "DOMAIN-SUFFIX,x.com,🚀 节点选择",
     "DOMAIN-SUFFIX,twitter.com,🚀 节点选择",
 
-    // ACL4SSR 原版规则
+    // 2. ACL4SSR 原版规则
     "RULE-SET,LocalAreaNetwork,🎯 全球直连",
     "RULE-SET,UnBan,🎯 全球直连",
     "RULE-SET,BanAD,🛑 广告拦截",
@@ -96,39 +93,45 @@ const baseRules = [
     "MATCH,🐟 漏网之鱼"
 ];
 
-// ================= 4. DNS 配置 (Meta 最佳实践) =================
-// 这就是 ACL4SSR 能够秒开的秘密：Fake-IP + 国内直连解析
+// ================= 4. DNS 配置 (1:1 还原截图) =================
+// 核心秘密：全部走国内 DoH，配合 Fake-IP，速度极快
 function buildDnsConfig() {
     return {
         enable: true,
-        ipv6: ipv6Enabled,
+        ipv6: false, // 截图显示 IPv6 关闭
         "prefer-h3": true,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
         "use-hosts": true,
         
-        // 1. 默认 Nameserver：走国外，保证无污染
+        // 1. 解析节点 IP：用国内 UDP (截图默认)
+        "default-nameserver": ["223.5.5.5", "119.29.29.29"],
+        
+        // 2. 主 DNS：用国内 DoH (截图配置)
+        // 这里的关键是：虽然填的是国内DNS，但因为是 Fake-IP，
+        // Clash 会直接返回假 IP，不会真的去等 DNS 结果，所以国外网站也能秒开。
         nameserver: [
-            "https://1.1.1.1/dns-query",
-            "https://8.8.8.8/dns-query"
+            "https://doh.pub/dns-query",      // 腾讯 DoH
+            "https://dns.alidns.com/dns-query" // 阿里 DoH
         ],
         
-        // 2. 分流：所有 geosite:cn 强制走国内 DNS
-        // 这样国内网站就是毫秒级直连
-        "nameserver-policy": {
-            "geosite:cn,private,apple,huawei,xiaomi": [
-                "223.5.5.5",
-                "119.29.29.29"
-            ]
-        },
+        // 3. 代理 DNS：用于解析代理服务器域名
+        "proxy-server-nameserver": [
+            "https://doh.pub/dns-query",
+            "https://dns.alidns.com/dns-query"
+        ],
         
-        // 3. 节点域名解析
-        "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29"],
-        
+        // 4. Fallback：截图里也填了国内的，或者留空
+        // 我们这里保持一致，不强制走 8.8.8.8，相信 Fake-IP 的能力
         fallback: [],
-        "fallback-filter": { "geoip": true, "geoip-code": "CN", "ipcidr": ["240.0.0.0/4"] },
-        "fake-ip-filter": ["geosite:cn", "geosite:private", "*.lan", "*.local"]
+        
+        // 5. 假 IP 过滤 (截图配置)
+        "fake-ip-filter": [
+            "*.lan", "*.local", "time.*.com", "ntp.*.com", "+.market.xiaomi.com", 
+            "*.stun.*.*", "*.stun.*.*.*",
+            "+.doubao.com", "+.volces.com" // 手动加几个AI的以防万一
+        ]
     };
 }
 
@@ -167,7 +170,7 @@ function main(e) {
             if (landing) {
                 finalProxies.push({
                     ...p,
-                    "dialer-proxy": "🚀 前置代理", // 注意这里对应下面的组名
+                    "dialer-proxy": "🚀 前置代理", 
                     name: `${p.name} -> 前置`
                 });
             } else {
@@ -186,8 +189,7 @@ function main(e) {
 
     const proxyNames = finalProxies.map(p => p.name);
 
-    // 2. 动态生成国家分组 (用于填充 Select)
-    // 根据重命名后的前缀 (HK-, US- 等) 筛选
+    // 2. 动态生成国家分组
     const groupsHK = proxyNames.filter(n => n.startsWith("HK-"));
     const groupsJP = proxyNames.filter(n => n.startsWith("JP-"));
     const groupsUS = proxyNames.filter(n => n.startsWith("US-"));
@@ -195,17 +197,16 @@ function main(e) {
     const groupsSG = proxyNames.filter(n => n.startsWith("SG-"));
     const groupsKR = proxyNames.filter(n => n.startsWith("KR-"));
 
-    // 3. 构建 Proxy Groups (照搬 ACL4SSR 结构)
+    // 3. 构建 Proxy Groups (与 ACL4SSR 匹配)
     const groups = [
         {
             name: "🚀 节点选择",
             type: "select",
             proxies: ["♻️ 自动选择", "🇭🇰 香港节点", "🇨🇳 台湾节点", "🇸🇬 狮城节点", "🇯🇵 日本节点", "🇺🇲 美国节点", "🇰🇷 韩国节点", "🚀 手动切换", "DIRECT"]
         },
-        { name: "🚀 手动切换", type: "select", proxies: proxyNames }, // 全部节点
+        { name: "🚀 手动切换", type: "select", proxies: proxyNames }, 
         { name: "♻️ 自动选择", type: "url-test", proxies: proxyNames, interval: 300, tolerance: 50 },
         
-        // 功能分组
         { name: "📲 电报消息", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择", "🇸🇬 狮城节点", "🇭🇰 香港节点", "🇺🇲 美国节点"] },
         { name: "💬 OpenAi", type: "select", proxies: ["🚀 节点选择", "🇺🇲 美国节点", "🇸🇬 狮城节点", "🇯🇵 日本节点"] },
         { name: "📹 油管视频", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择", "🇭🇰 香港节点", "🇺🇲 美国节点", "🇯🇵 日本节点"] },
@@ -227,7 +228,6 @@ function main(e) {
         { name: "🍃 应用净化", type: "select", proxies: ["REJECT", "DIRECT"] },
         { name: "🐟 漏网之鱼", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
 
-        // 国家/地区分组 (填充筛选后的节点)
         { name: "🇭🇰 香港节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsHK.length > 0 ? groupsHK : ["DIRECT"] },
         { name: "🇯🇵 日本节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsJP.length > 0 ? groupsJP : ["DIRECT"] },
         { name: "🇺🇲 美国节点", type: "url-test", interval: 300, tolerance: 50, proxies: groupsUS.length > 0 ? groupsUS : ["DIRECT"] },
@@ -237,15 +237,12 @@ function main(e) {
         { name: "🎥 奈飞节点", type: "select", proxies: [...groupsSG, ...groupsHK, ...groupsUS] }
     ];
 
-    // 如果开启了 landing，添加前置代理组
     if (landing) {
         groups.push({
             name: "🚀 前置代理",
             type: "select",
             proxies: proxyNames.filter(n => !n.includes("-> 前置"))
         });
-        // 把“落地节点”逻辑融入“手动切换”或“节点选择”比较复杂，
-        // 这里简单地把落地组作为备选
         groups[0].proxies.push("🚀 前置代理");
     }
 
