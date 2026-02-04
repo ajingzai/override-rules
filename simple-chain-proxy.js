@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (无图纯净版)
+powerfullz 的 Substore 订阅转换脚本 (最终逻辑修正版)
 https://github.com/powerfullz/override-rules
 
-配置说明：
-1. [界面纯净] 彻底移除了所有图标，纯文字显示，整齐且无加载问题。
-2. [逻辑优化] "自动选择" 分组现在会自动排除所有落地节点，只优选前置节点。
-3. [内核保持] 秒开 DNS + 极简分组 + 自动重命名。
+配置变更：
+1. [关键逻辑] "前置代理" 分组现在包含 "自动选择"，实现动态最优链路。
+2. [自动净化] "自动选择" 分组依然排除所有落地节点，只测速前置节点。
+3. [界面纯净] 无图标纯文字，整齐清爽。
 */
 
 // ================= 1. 基础工具 =================
@@ -99,14 +99,14 @@ function getCountryCode(name) {
     return "OT";
 }
 
-// ================= 7. 策略组生成 (无图+逻辑优化) =================
+// ================= 7. 策略组生成 (纯净+逻辑修正) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
     
-    // 筛选前置节点 (纯净节点，无 "-> 前置" 后缀)
+    // 筛选前置节点 (无后缀)
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
-    // 筛选落地节点 (带后缀)
+    // 筛选落地节点 (有后缀)
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
     const mainProxies = landing 
@@ -120,16 +120,16 @@ function buildProxyGroups(proxies, landing) {
         proxies: mainProxies
     });
 
-    // 2. 自动选择 (关键修改：只包含 frontProxies，排除落地节点)
+    // 2. 自动选择 (只测速前置节点，排除落地)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         type: "url-test", 
-        proxies: frontProxies, // <--- 这里只放前置节点
+        proxies: frontProxies, // <--- 关键：只放前置
         interval: 300, 
         tolerance: 50 
     });
 
-    // 3. 手动切换 (依然包含全部，方便你手动选落地)
+    // 3. 手动切换 (包含全部)
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
         type: "select", 
@@ -138,12 +138,14 @@ function buildProxyGroups(proxies, landing) {
 
     // 4. 前置与落地
     if (landing) {
+        // 【关键修改】前置代理 -> 包含“自动选择” + 所有前置节点
         groups.push({
             name: PROXY_GROUPS.FRONT,
             type: "select",
             proxies: [PROXY_GROUPS.AUTO, ...frontProxies] 
         });
         
+        // 落地节点 -> 只包含落地节点
         groups.push({
             name: PROXY_GROUPS.LANDING,
             type: "select",
