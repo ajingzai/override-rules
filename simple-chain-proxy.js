@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (纯净图标版)
+powerfullz 的 Substore 订阅转换脚本 (图标补全版)
 https://github.com/powerfullz/override-rules
 
 配置说明：
-1. [视觉修复] 移除所有分组名称中的 Emoji，只保留高清彩色图标，解决“双图标”和“对不齐”问题。
-2. [界面整洁] 分组列表将完美左对齐，清爽干净。
+1. [图标修复] 补全了“落地节点”和“漏网之鱼”缺失的图标，现在所有分组都有图标了。
+2. [界面整洁] 分组列表左对齐，清爽干净。
 3. [功能保持] 秒开 DNS + 极简分组 + 自动重命名。
 */
 
@@ -15,7 +15,7 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 (去除了 Emoji) =================
+// ================= 2. 核心组名定义 =================
 const PROXY_GROUPS = {
     SELECT: "节点选择",
     FRONT: "前置代理",
@@ -99,7 +99,7 @@ function getCountryCode(name) {
     return "OT";
 }
 
-// ================= 7. 策略组生成 (纯净图标版) =================
+// ================= 7. 策略组生成 (完美图标) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     const proxyNames = proxies.map(p => p.name);
@@ -111,7 +111,7 @@ function buildProxyGroups(proxies, landing) {
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
 
-    // 1. 节点选择 (火箭图标)
+    // 1. 节点选择 (火箭)
     groups.push({
         name: PROXY_GROUPS.SELECT,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Rocket.png",
@@ -119,7 +119,7 @@ function buildProxyGroups(proxies, landing) {
         proxies: mainProxies
     });
 
-    // 2. 自动选择 (自动图标)
+    // 2. 自动选择 (自动)
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", 
@@ -129,7 +129,7 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 3. 手动切换 (列表/星星图标)
+    // 3. 手动切换 (星星/列表)
     groups.push({ 
         name: PROXY_GROUPS.MANUAL, 
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Star.png", 
@@ -148,13 +148,13 @@ function buildProxyGroups(proxies, landing) {
         
         groups.push({
             name: PROXY_GROUPS.LANDING,
-            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airplane.png", // 飞机
+            icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airplane.png", // 飞机 (补全)
             type: "select",
             proxies: landingProxies.length ? landingProxies : ["DIRECT"]
         });
     }
 
-    // 5. 全球直连 (直连图标)
+    // 5. 全球直连 (靶心)
     groups.push({
         name: PROXY_GROUPS.DIRECT,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png",
@@ -162,10 +162,10 @@ function buildProxyGroups(proxies, landing) {
         proxies: ["DIRECT", PROXY_GROUPS.SELECT] 
     });
 
-    // 6. 漏网之鱼 (鱼图标)
+    // 6. 漏网之鱼 (鱼)
     groups.push({
         name: PROXY_GROUPS.MATCH,
-        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Fish.png",
+        icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Fish.png", // 鱼 (补全)
         type: "select",
         proxies: [PROXY_GROUPS.SELECT, "DIRECT"]
     });
