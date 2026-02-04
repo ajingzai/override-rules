@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (完美平衡版)
+powerfullz 的 Substore 订阅转换脚本 (在线规则托管版)
 https://github.com/powerfullz/override-rules
 
-核心策略：
-1. [国内恢复] 恢复 GEOSITE:CN 和 nameserver-policy，国内网站秒开，不再绕路。
-2. [防报错] 只引用 standard 列表 (CN, GOOGLE, GITHUB)，避开 GCM/TikTok 等易报错列表。
-3. [国外加固] TikTok/AI/X 继续使用硬编码规则，确保 100% 走代理。
-4. [功能] 链式代理、端口映射、重命名全部保留。
+配置变更：
+1. [自动更新] 引入 blackmatrix7 的在线规则集 (China/Proxy/TikTok)，每天自动更新，无需手动维护。
+2. [Grok加速] 手动置顶 Grok/xAI/Twitter 规则，确保其绝对走代理，解决加载慢/打不开。
+3. [DNS策略] 保持“去毒+分流”策略，国内域名走阿里DNS，国外域名走 1.1.1.1。
+4. [功能保留] 链式代理、端口映射、重命名全部保留。
 */
 
 // ================= 1. 基础工具 =================
@@ -23,13 +23,48 @@ const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 // ================= 2. 组名定义 =================
 const PROXY_GROUPS = { SELECT: "选择代理", FRONT: "前置代理", LANDING: "落地节点", MANUAL: "手动选择", DIRECT: "直连" };
 
-// ================= 3. 规则集 =================
+// ================= 3. 在线规则集 (Rule Providers) =================
+// 这里配置了自动更新的订阅源，每天(86400秒)更新一次
 const ruleProviders = {
-    // 仅保留基础去广告，其他规则全部内置
-    ADBlock: { type: "http", behavior: "domain", format: "mrs", interval: 86400, url: "https://adrules.top/adrules-mihomo.mrs", path: "./ruleset/ADBlock.mrs" }
+    // 🇨🇳 国内域名列表 (包含数万个国内网站)
+    China: {
+        type: "http", behavior: "domain", format: "yaml", interval: 86400,
+        url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China.yaml",
+        path: "./ruleset/China.yaml"
+    },
+    // 🌍 国外/代理域名列表 (包含 Google/Github/Netflix 等)
+    Proxy: {
+        type: "http", behavior: "domain", format: "yaml", interval: 86400,
+        url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Proxy/Proxy.yaml",
+        path: "./ruleset/Proxy.yaml"
+    },
+    // 🎵 TikTok 专属列表
+    TikTok: {
+        type: "http", behavior: "domain", format: "yaml", interval: 86400,
+        url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TikTok/TikTok.yaml",
+        path: "./ruleset/TikTok.yaml"
+    },
+    // 📺 YouTube
+    YouTube: {
+        type: "http", behavior: "domain", format: "yaml", interval: 86400,
+        url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTube/YouTube.yaml",
+        path: "./ruleset/YouTube.yaml"
+    },
+    // 🤖 OpenAI / ChatGPT
+    OpenAI: {
+        type: "http", behavior: "domain", format: "yaml", interval: 86400,
+        url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI.yaml",
+        path: "./ruleset/OpenAI.yaml"
+    },
+    // 🛑 广告拦截
+    ADBlock: { 
+        type: "http", behavior: "domain", format: "mrs", interval: 86400, 
+        url: "https://adrules.top/adrules-mihomo.mrs", 
+        path: "./ruleset/ADBlock.mrs" 
+    }
 };
 
-// ================= 4. 规则配置 (混合模式) =================
+// ================= 4. 规则配置 (Grok置顶 + 在线列表) =================
 const baseRules = [
     // 1. 阻断 QUIC
     "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT",
@@ -39,75 +74,50 @@ const baseRules = [
     `IP-CIDR,1.1.1.1/32,${PROXY_GROUPS.SELECT},no-resolve`,
     `DOMAIN,dns.google,${PROXY_GROUPS.SELECT}`,
 
-    // ================= 国外重点 (硬编码 + 标准Geosite) =================
-    // GitHub (Geosite很稳，但也加硬编码双保险)
-    `DOMAIN-KEYWORD,github,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,GITHUB,${PROXY_GROUPS.SELECT}`,
-    
-    // Twitter / X (硬编码)
+    // ================= ⚡ Grok / xAI / Twitter 极速置顶 =================
+    // 这些是我们手动强加的，优先级最高，确保 Grok 秒开！
+    `DOMAIN-SUFFIX,grok.com,${PROXY_GROUPS.SELECT}`,  // Grok 官网
+    `DOMAIN-SUFFIX,x.ai,${PROXY_GROUPS.SELECT}`,      // xAI 官网
     `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
     
-    // Telegram (硬编码 + 标准Geosite)
-    `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.SELECT}`,
-    `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.SELECT},no-resolve`,
-    `GEOSITE,TELEGRAM,${PROXY_GROUPS.SELECT}`,
-
-    // TikTok (必须硬编码，Geosite容易缺失)
-    `DOMAIN-KEYWORD,tiktok,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,tiktokcdn.com,${PROXY_GROUPS.SELECT}`,
-
-    // Google / YouTube (标准Geosite + 补漏)
-    `GEOSITE,GOOGLE,${PROXY_GROUPS.SELECT}`,
-    `GEOSITE,YOUTUBE,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,google.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
-    
-    // AI (OpenAI/Gemini/Claude)
-    `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,gemini.google.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,claude.ai,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,sora.com,${PROXY_GROUPS.SELECT}`,
-
-    // 常见国外流媒体
-    `GEOSITE,NETFLIX,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,spotify.com,${PROXY_GROUPS.SELECT}`,
-    
-    // ================= 国内直连 (恢复 GEOSITE:CN) =================
+    // ================= 引用在线规则集 =================
     "RULE-SET,ADBlock,REJECT",
     
-    // 1. 标准 CN 列表 (这里恢复了！)
-    // 这行能覆盖 99% 的国内网站，解决变慢问题
-    `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
+    // 优先匹配特定 APP
+    `RULE-SET,TikTok,${PROXY_GROUPS.SELECT}`,
+    `RULE-SET,YouTube,${PROXY_GROUPS.SELECT}`,
+    `RULE-SET,OpenAI,${PROXY_GROUPS.SELECT}`,
     
-    // 2. 常见国内域名补漏 (防止 Geosite 抽风)
-    `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,qq.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,163.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,baidu.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,alipay.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,jd.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
+    // 🇨🇳 国内列表 -> 直连
+    `RULE-SET,China,${PROXY_GROUPS.DIRECT}`,
     
-    // 3. 中国 IP 直连
+    // 🌍 国外列表 -> 代理
+    `RULE-SET,Proxy,${PROXY_GROUPS.SELECT}`,
+    
+    // ================= 兜底规则 =================
+    // 中国 IP 直连
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
-    
-    // ================= 万能兜底 =================
-    // 既不是国内 Geosite，又不是中国 IP 的，全部走代理
+    // 剩下的全部走代理
     `MATCH,${PROXY_GROUPS.SELECT}`
 ];
 
-// ================= 5. DNS 配置 (恢复 CN 分流) =================
+// ================= 5. DNS 配置 (手动分流保平安) =================
+// 依然保持手动列表，因为 nameserver-policy 不支持 rule-provider
+// 这能确保你绝不会遇到 "GeoSite error" 报错
+const CN_DNS_DOMAINS = [
+    "+.cn", "+.baidu.com", "+.qq.com", "+.tencent.com", "+.aliyun.com", 
+    "+.taobao.com", "+.tmall.com", "+.jd.com", "+.bilibili.com", 
+    "+.163.com", "+.xiaomi.com", "+.huawei.com", "+.meituan.com",
+    "+.douyin.com", "+.kuaishou.com", "+.zhihu.com", "+.weibo.com"
+];
+
 function buildDnsConfig() {
+    const cnPolicy = {};
+    cnPolicy[CN_DNS_DOMAINS.join(",")] = ["223.5.5.5", "119.29.29.29"];
+
     return {
         enable: true,
         ipv6: ipv6Enabled,
@@ -119,29 +129,25 @@ function buildDnsConfig() {
         
         "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29"],
         
-        // 1. 默认 Nameserver：只填国外，防止污染
+        // 国外走 DoH
         nameserver: [
             "https://1.1.1.1/dns-query",
             "https://8.8.8.8/dns-query"
         ],
         
-        // 2. 分流策略：恢复了 geosite:cn ！
-        // 这会让国内网站直接问阿里 DNS，速度飞快
-        "nameserver-policy": {
-            "geosite:cn,private,apple,huawei,xiaomi": [
-                "223.5.5.5",
-                "119.29.29.29"
-            ]
-        },
+        // 国内走 UDP
+        "nameserver-policy": cnPolicy,
         
         fallback: [],
         "fallback-filter": { "geoip": true, "geoip-code": "CN", "ipcidr": ["240.0.0.0/4"] },
 
         "fake-ip-filter": [
-            "geosite:cn", // 恢复
-            "geosite:private",
+            "+.cn",
+            "+.baidu.com",
+            "+.qq.com",
             "Mijia Cloud",
             "dig.io.mi.com",
+            "localhost.ptlogin2.qq.com",
             "*.icloud.com",
             "*.stun.*.*"
         ]
@@ -218,10 +224,8 @@ function main(e) {
     rawProxies.forEach(p => {
         if (excludeKeywords.test(p.name)) return;
 
-        // B. 处理“落地”节点
         if (p.name.includes(strictLandingKeyword)) {
             if (landing) {
-                // 【强制链式】
                 finalProxies.push({
                     ...p,
                     "dialer-proxy": PROXY_GROUPS.FRONT,
@@ -231,7 +235,6 @@ function main(e) {
                 finalProxies.push(p);
             }
         } 
-        // C. 处理普通节点 (重命名)
         else {
             const code = getCountryCode(p.name);
             if (!countryCounts[code]) countryCounts[code] = 0;
