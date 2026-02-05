@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (日本严格独享版 - 包含城市名)
+powerfullz 的 Substore 订阅转换脚本 (香港高速/IEPL 严格定制版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [正则增强] 增加 Tokyo/Osaka 等城市名匹配。
-2. [严格模式] 如果找不到日本节点，直接直连，绝不回退到其他国家节点。
+1. [负载均衡] 极度严格筛选：仅允许名称包含 "香港高速" 或 "香港IEPL" 的节点。
+2. [保底机制] 如果找不到上述节点，强制直连，防止配置报错。
 */
 
 // ================= 1. 基础工具 =================
@@ -61,29 +61,27 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (严格筛选版) =================
+// ================= 5. 策略组生成 (定制筛选版) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     if (!proxies || proxies.length === 0) return [];
-    const proxyNames = proxies.map(p => p.name);
     
+    const proxyNames = proxies.map(p => p.name);
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 【关键修改 1】正则增强，加入常见日本城市
-    // 日本, JP, Japan, 🇯🇵, 东京, Tokyo, 大阪, Osaka, 埼玉, Saitama, 川口
-    const regionRegex = /日本|JP|Japan|🇯🇵|东京|Tokyo|大阪|Osaka|埼玉|Saitama|川口/i;
+    // 【关键修改】严格匹配 "香港高速" 或 "香港IEPL"
+    const specificRegex = /香港高速|香港IEPL/i;
     
     // 筛选
-    let fastProxies = frontProxies.filter(n => regionRegex.test(n));
+    let fastProxies = frontProxies.filter(n => specificRegex.test(n));
 
-    // 【关键修改 2】严格模式：没有就拉倒，不回退
+    // 【严格保底】
+    // 只有匹配到了才放进去，匹配不到就给个直连占位，绝不放杂七杂八的节点
     let lbProxies = [];
     if (fastProxies.length > 0) {
         lbProxies = fastProxies; 
     } else {
-        // 如果这里依然找不到日本节点，说明你的节点命名完全避开了上面的关键词
-        // 此时强制给一个 DIRECT，不再显示韩国节点，方便你意识到匹配失败了
         lbProxies = ["DIRECT"]; 
     }
 
@@ -93,7 +91,7 @@ function buildProxyGroups(proxies, landing) {
 
     // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
-    
+
     // 02. 自动选择
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
@@ -103,14 +101,14 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 负载均衡 (严格日本版)
+    // 03. 负载均衡 (定制版)
     groups.push({
         name: PROXY_GROUPS.LB,
         type: "load-balance",
         strategy: "consistent-hashing",
         url: "http://www.gstatic.com/generate_204",
         interval: 300,
-        proxies: lbProxies // <--- 这里现在非常严格
+        proxies: lbProxies 
     });
 
     if (landing) {
