@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (香港高速/IEPL 严格定制版)
+powerfullz 的 Substore 订阅转换脚本 (香港宽松版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [负载均衡] 极度严格筛选：仅允许名称包含 "香港高速" 或 "香港IEPL" 的节点。
-2. [保底机制] 如果找不到上述节点，强制直连，防止配置报错。
+1. [负载均衡] 宽松筛选：包含 "香港"、"HK"、"Hong Kong" 或 "🇭🇰" 的节点均可入选。
+2. [保底机制] 如果找不到任何香港节点，强制直连，避免错误分流。
 */
 
 // ================= 1. 基础工具 =================
@@ -61,7 +61,7 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (定制筛选版) =================
+// ================= 5. 策略组生成 (香港宽松版) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     if (!proxies || proxies.length === 0) return [];
@@ -70,18 +70,19 @@ function buildProxyGroups(proxies, landing) {
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 【关键修改】严格匹配 "香港高速" 或 "香港IEPL"
-    const specificRegex = /香港高速|香港IEPL/i;
+    // 【关键修改】宽松匹配
+    // 匹配：香港, HK, hk, Hong Kong, HongKong, 🇭🇰
+    const regionRegex = /香港|HK|Hong\s*Kong|🇭🇰/i;
     
     // 筛选
-    let fastProxies = frontProxies.filter(n => specificRegex.test(n));
+    let fastProxies = frontProxies.filter(n => regionRegex.test(n));
 
-    // 【严格保底】
-    // 只有匹配到了才放进去，匹配不到就给个直连占位，绝不放杂七杂八的节点
+    // 【保底逻辑】
     let lbProxies = [];
     if (fastProxies.length > 0) {
         lbProxies = fastProxies; 
     } else {
+        // 如果连一个带“香港/HK”字样的节点都找不到，就直连
         lbProxies = ["DIRECT"]; 
     }
 
@@ -101,7 +102,7 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 负载均衡 (定制版)
+    // 03. 负载均衡 (香港全量)
     groups.push({
         name: PROXY_GROUPS.LB,
         type: "load-balance",
