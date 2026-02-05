@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (新加坡独享版)
+powerfullz 的 Substore 订阅转换脚本 (韩国独享版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [负载均衡] 严格筛选：只允许新加坡 (SG) 节点进入负载均衡池。
-2. [保底机制] 如果没有新加坡节点，自动回退到所有前置节点，防止列表消失。
+1. [负载均衡] 严格筛选：只允许韩国 (KR) 节点进入负载均衡池。
+2. [保底机制] 如果没有韩国节点，自动回退到所有前置节点，防止列表消失。
 */
 
 // ================= 1. 基础工具 =================
@@ -61,7 +61,7 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (新加坡独享版) =================
+// ================= 5. 策略组生成 (韩国独享版) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     
@@ -73,9 +73,9 @@ function buildProxyGroups(proxies, landing) {
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 【关键修改】只匹配新加坡
-    // 涵盖常见关键词：新加坡, SG, Singapore, 狮城, 以及国旗 Emoji 🇸🇬
-    const regionRegex = /新加坡|SG|Singapore|狮城|🇸🇬/i;
+    // 【关键修改】只匹配韩国
+    // 涵盖常见关键词：韩国, KR, Korea, 首尔, 以及国旗 Emoji 🇰🇷
+    const regionRegex = /韩国|KR|Korea|首尔|🇰🇷/i;
     
     // 筛选
     let fastProxies = frontProxies.filter(n => regionRegex.test(n));
@@ -83,9 +83,9 @@ function buildProxyGroups(proxies, landing) {
     // 【保底逻辑】
     let lbProxies = [];
     if (fastProxies.length > 0) {
-        lbProxies = fastProxies; // 优先用新加坡
+        lbProxies = fastProxies; // 优先用韩国
     } else if (frontProxies.length > 0) {
-        lbProxies = frontProxies; // 没新加坡就用全部
+        lbProxies = frontProxies; // 没韩国就用全部
     } else {
         lbProxies = ["DIRECT"]; // 啥都没就直连
     }
@@ -110,7 +110,7 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 负载均衡 (新加坡独享)
+    // 03. 负载均衡 (韩国独享)
     groups.push({
         name: PROXY_GROUPS.LB,
         type: "load-balance",
