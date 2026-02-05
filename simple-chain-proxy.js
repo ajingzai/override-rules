@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (日本独享版)
+powerfullz 的 Substore 订阅转换脚本 (日本严格独享版 - 包含城市名)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [负载均衡] 严格筛选：只允许日本 (JP) 节点进入负载均衡池。
-2. [保底机制] 如果没有日本节点，自动回退到所有前置节点，防止列表消失。
+1. [正则增强] 增加 Tokyo/Osaka 等城市名匹配。
+2. [严格模式] 如果找不到日本节点，直接直连，绝不回退到其他国家节点。
 */
 
 // ================= 1. 基础工具 =================
@@ -29,7 +29,7 @@ const PROXY_GROUPS = {
 
 // ================= 3. 规则配置 =================
 const baseRules = [
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC
+    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`,
@@ -61,33 +61,30 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (日本独享版) =================
+// ================= 5. 策略组生成 (严格筛选版) =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
-    
-    // 安全检查
     if (!proxies || proxies.length === 0) return [];
-
     const proxyNames = proxies.map(p => p.name);
     
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 【关键修改】只匹配日本
-    // 涵盖常见关键词：日本, JP, Japan, 🇯🇵
-    const regionRegex = /日本|JP|Japan|🇯🇵/i;
+    // 【关键修改 1】正则增强，加入常见日本城市
+    // 日本, JP, Japan, 🇯🇵, 东京, Tokyo, 大阪, Osaka, 埼玉, Saitama, 川口
+    const regionRegex = /日本|JP|Japan|🇯🇵|东京|Tokyo|大阪|Osaka|埼玉|Saitama|川口/i;
     
     // 筛选
     let fastProxies = frontProxies.filter(n => regionRegex.test(n));
 
-    // 【保底逻辑】
+    // 【关键修改 2】严格模式：没有就拉倒，不回退
     let lbProxies = [];
     if (fastProxies.length > 0) {
-        lbProxies = fastProxies; // 优先用日本
-    } else if (frontProxies.length > 0) {
-        lbProxies = frontProxies; // 没日本就用全部
+        lbProxies = fastProxies; 
     } else {
-        lbProxies = ["DIRECT"]; // 啥都没就直连
+        // 如果这里依然找不到日本节点，说明你的节点命名完全避开了上面的关键词
+        // 此时强制给一个 DIRECT，不再显示韩国节点，方便你意识到匹配失败了
+        lbProxies = ["DIRECT"]; 
     }
 
     const mainProxies = landing 
@@ -95,12 +92,8 @@ function buildProxyGroups(proxies, landing) {
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, PROXY_GROUPS.MANUAL, "DIRECT"];
 
     // 01. 节点选择
-    groups.push({
-        name: PROXY_GROUPS.SELECT,
-        type: "select",
-        proxies: mainProxies
-    });
-
+    groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
+    
     // 02. 自动选择
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
@@ -110,27 +103,22 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // 03. 负载均衡 (日本独享)
+    // 03. 负载均衡 (严格日本版)
     groups.push({
         name: PROXY_GROUPS.LB,
         type: "load-balance",
         strategy: "consistent-hashing",
         url: "http://www.gstatic.com/generate_204",
         interval: 300,
-        proxies: lbProxies 
+        proxies: lbProxies // <--- 这里现在非常严格
     });
 
-    // 04. 前置代理
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
             type: "select",
             proxies: [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, ...frontProxies] 
         });
-    }
-
-    // 05. 落地节点
-    if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
             type: "select",
@@ -138,14 +126,7 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 06. 手动切换
-    groups.push({ 
-        name: PROXY_GROUPS.MANUAL, 
-        type: "select", 
-        proxies: [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, ...frontProxies]
-    });
-
-    // 07, 08, 09
+    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: [PROXY_GROUPS.AUTO, PROXY_GROUPS.LB, ...frontProxies] });
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
@@ -163,14 +144,9 @@ function main(e) {
 
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
-
             if (p.name.includes(strictLandingKeyword)) {
                 if (landing) {
-                    finalProxies.push({
-                        ...p,
-                        "dialer-proxy": PROXY_GROUPS.FRONT,
-                        name: `${p.name} -> 前置`
-                    });
+                    finalProxies.push({ ...p, "dialer-proxy": PROXY_GROUPS.FRONT, name: `${p.name} -> 前置` });
                 } else {
                     finalProxies.push(p);
                 }
@@ -184,18 +160,11 @@ function main(e) {
         const autoListeners = [];
         let startPort = 8000;
         finalProxies.forEach(proxy => {
-            autoListeners.push({
-                name: `mixed-${startPort}`,
-                type: "mixed",
-                address: "0.0.0.0",
-                port: startPort, 
-                proxy: proxy.name
-            });
+            autoListeners.push({ name: `mixed-${startPort}`, type: "mixed", address: "0.0.0.0", port: startPort, proxy: proxy.name });
             startPort++;
         });
 
         const u = buildProxyGroups(finalProxies, landing);
-        
         const allProxyNames = finalProxies.map(p => p.name);
         u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
 
