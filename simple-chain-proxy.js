@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (终极全规则硬编码 + 香港宽松版)
+powerfullz 的 Substore 订阅转换脚本 (UDP直通版 + 全规则 + 香港宽松版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [规则究极增强] 覆盖币圈、游戏、开发、隐私、以及国内各大生活类 APP。
-2. [负载均衡] 宽松筛选：包含 "香港"、"HK"、"Hong Kong" 或 "🇭🇰" 的节点均可入选。
-3. [保底机制] 找不到香港节点时强制直连。
+1. [修复] 注释掉了 QUIC 阻断规则，允许 UDP 流量，尝试修复 YouTube 加载问题。
+2. [规则] 包含究极全规则硬编码。
+3. [负载均衡] 宽松筛选：包含 "香港"、"HK"、"Hong Kong" 或 "🇭🇰" 的节点均可入选。
 */
 
 // ================= 1. 基础工具 =================
@@ -31,7 +31,8 @@ const PROXY_GROUPS = {
 // ================= 3. 规则配置 (究极硬编码版) =================
 const baseRules = [
     // --- 0. 核心阻断 & 安全 ---
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", // 阻断 QUIC
+    // 【已修改】下面这行被注释掉了，现在允许 UDP/QUIC 流量通过
+    // "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
 
     // --- 1. 特殊直连 (国产 AI & 国内服务) ---
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
@@ -115,7 +116,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,python.org,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,oracle.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,medium.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,archive.org,${PROXY_GROUPS.SELECT}`, // 互联网档案馆
+    `DOMAIN-SUFFIX,archive.org,${PROXY_GROUPS.SELECT}`, 
 
     // --- 7. 加密货币 (Binance/OKX/MetaMask) ---
     `DOMAIN-SUFFIX,binance.com,${PROXY_GROUPS.SELECT}`,
@@ -134,7 +135,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,coinmarketcap.com,${PROXY_GROUPS.SELECT}`,
 
     // --- 8. 游戏 & 语音 (Steam/Discord/Twitch) ---
-    `DOMAIN-SUFFIX,steamcommunity.com,${PROXY_GROUPS.SELECT}`, // 社区必须走代理
+    `DOMAIN-SUFFIX,steamcommunity.com,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,steampowered.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,discord.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`,
@@ -218,12 +219,12 @@ const baseRules = [
     `DOMAIN-SUFFIX,youku.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,mgtv.com,${PROXY_GROUPS.DIRECT}`,
     // 银行/支付 (防风控)
-    `DOMAIN-SUFFIX,95516.com,${PROXY_GROUPS.DIRECT}`, // 银联
-    `DOMAIN-SUFFIX,cmbchina.com,${PROXY_GROUPS.DIRECT}`, // 招行
-    `DOMAIN-SUFFIX,icbc.com.cn,${PROXY_GROUPS.DIRECT}`, // 工行
-    `DOMAIN-SUFFIX,ccb.com,${PROXY_GROUPS.DIRECT}`, // 建行
-    `DOMAIN-SUFFIX,abchina.com,${PROXY_GROUPS.DIRECT}`, // 农行
-    `DOMAIN-SUFFIX,boc.cn,${PROXY_GROUPS.DIRECT}`, // 中行
+    `DOMAIN-SUFFIX,95516.com,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,cmbchina.com,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,icbc.com.cn,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,ccb.com,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,abchina.com,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,boc.cn,${PROXY_GROUPS.DIRECT}`, 
     // 运营商/政务/教育
     `DOMAIN-SUFFIX,10086.cn,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,189.cn,${PROXY_GROUPS.DIRECT}`,
@@ -280,7 +281,7 @@ function buildProxyGroups(proxies, landing) {
     
     let fastProxies = frontProxies.filter(n => regionRegex.test(n));
 
-    // 【保底逻辑】找不到香港就直连，防止乱飞
+    // 【保底逻辑】找不到香港就直连
     let lbProxies = fastProxies.length > 0 ? fastProxies : ["DIRECT"];
 
     const mainProxies = landing 
