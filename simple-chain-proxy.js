@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (分组排序优化版)
+powerfullz 的 Substore 订阅转换脚本 (分组排序优化版 + DNS防泄露增强)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [排序] 将 "前置代理"、"落地节点"、"手动切换" 提权至顶部，紧跟在 "节点选择" 之后。
+1. [排序] 将 "前置代理"、"落地节点"、"手动切换" 提权至顶部。
 2. [重构] 移除负载均衡，采用精细化 App 策略组。
-3. [保底] UDP/QUIC 默认放行。
+3. [DNS] 增加 nameserver-policy，实现国内外域名精准分流解析，防止流媒体检测。
 */
 
 // ================= 1. 基础工具 =================
@@ -121,7 +121,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 =================
+// ================= 4. DNS 配置 (流媒体优化版) =================
 function buildDnsConfig() {
     return {
         enable: true,
@@ -132,8 +132,33 @@ function buildDnsConfig() {
         "listen": ":1053",
         "use-hosts": true,
         "default-nameserver": ["223.5.5.5", "119.29.29.29"],
-        nameserver: ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
-        fallback: []
+        
+        // --- 核心修改：精准分流策略 ---
+        "nameserver-policy": {
+            // 国内域名：走腾讯/阿里 DNS
+            "geosite:cn,private": [
+                "https://doh.pub/dns-query", 
+                "https://dns.alidns.com/dns-query"
+            ],
+            // 海外/非国内域名：强制走 Google/Cloudflare DNS (走代理)
+            "geosite:geolocation-!cn": [
+                "https://dns.google/dns-query", 
+                "https://1.1.1.1/dns-query"
+            ]
+        },
+        
+        // 默认 DNS (主要用于兜底和国内)
+        nameserver: [
+            "https://doh.pub/dns-query", 
+            "https://dns.alidns.com/dns-query"
+        ],
+        
+        fallback: [],
+        "fallback-filter": {
+            geoip: true,
+            "geoip-code": "CN",
+            ipcidr: ["240.0.0.0/4"]
+        }
     };
 }
 
