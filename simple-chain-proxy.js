@@ -1,8 +1,8 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (Modified v6 - All Landing)
+powerfullz 的 Substore 订阅转换脚本 (Modified v7 - Map Fix)
 优化内容：
-1. 自动剔除官网、邮箱、异常提示等无用节点
-2. 【核心修改】：只要包含“落地”二字，统统算作落地节点（不排除家宽/星链）：
+1. 【强制生效修复】：使用 .map() 重建节点对象，彻底解决 Socks5 等节点因只读属性导致无法改名、无法添加 dialer-proxy 的问题。
+2. 只要包含“落地”二字，统统算作落地节点（不排除家宽/星链）：
    - 自动添加“自建”后缀
    - 自动绑定 dialer-proxy 指向前置代理
    - 仅进入“落地节点”分组，严格从其他分组隔离
@@ -220,7 +220,7 @@ function buildCountryProxyGroups({ countries: e, landing: t, loadBalance: o }) {
         n = "0\\.[0-5]|低倍率|省流|大流量|实验性",
         s = o ? "load-balance" : "url-test";
     
-    // 【修改点】：所有国家分组一律排除含“落地”二字的节点
+    // 所有国家分组一律排除含“落地”二字的节点
     const excludePattern = `(?i)落地|${n}`;
 
     for (const l of e) {
@@ -239,7 +239,6 @@ function buildCountryProxyGroups({ countries: e, landing: t, loadBalance: o }) {
     return r
 }
 
-// proxiesWhiteList 参数，用于接收非落地节点列表
 function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, lowCost: r, defaultProxies: n, defaultProxiesDirect: s, defaultSelector: l, defaultFallback: i, proxiesWhiteList: whitelist }) {
     const a = t.includes("台湾"),
         c = t.includes("香港"),
@@ -253,14 +252,12 @@ function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, low
     }, {
         name: PROXY_GROUPS.MANUAL,
         icon: "https://gcore.jsdelivr.net/gh/shindgewongxj/WHATSINStash@master/icon/select.png",
-        // 传入白名单（无落地）
         type: "select",
         proxies: whitelist 
     }, 
     e ? {
         name: "前置代理",
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
-        // 传入白名单（无落地）
         type: "select",
         proxies: whitelist
     } : null, 
@@ -269,7 +266,6 @@ function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, low
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
         type: "select",
         "include-all": !0,
-        // 【核心修改】：只要含“落地”就进，不排除家宽/星链
         filter: "(?i)落地"
     } : null, {
         name: PROXY_GROUPS.FALLBACK,
@@ -398,20 +394,30 @@ function main(e) {
     rawProxies = rawProxies.filter(p => !excludePattern.test(p.name));
 
     // 2. 处理落地节点：只要含“落地” -> 加自建后缀 & 绑定前置代理
+    // 【重要修改】：不再使用 forEach 修改，而是使用 map 创建新对象，解决 Socks5 只读问题
     const landingPattern = /落地/;
-    // 移除 residentialPattern 的判断，不再区分是否家宽
     
-    rawProxies.forEach(p => {
+    rawProxies = rawProxies.map(p => {
+        // 如果包含“落地”二字
         if (landingPattern.test(p.name)) {
-            if (!p.name.includes("自建")) {
-                p.name = p.name + "自建";
+            // 复制原对象属性，确保不影响原只读对象
+            const newNode = { ...p };
+            
+            // 处理改名
+            if (!newNode.name.includes("自建")) {
+                newNode.name = newNode.name + "自建";
             }
+            
             // 绑定链式代理
-            p["dialer-proxy"] = "前置代理";
+            newNode["dialer-proxy"] = "前置代理";
+            
+            return newNode;
         }
+        // 如果不是落地节点，直接返回
+        return p;
     });
 
-    // 【关键步骤】：生成一个纯净的节点名称列表，排除所有含“落地”的节点
+    // 3. 生成一个纯净的节点名称列表，排除所有含“落地”的节点 (此时名字已经包含“自建”了)
     // 用于传给 Manual 和 Pre-proxy
     const nonLandingProxies = rawProxies
         .filter(p => !landingPattern.test(p.name))
