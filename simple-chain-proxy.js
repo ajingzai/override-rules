@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (SNI 补全 + TFO 禁用修复版)
+powerfullz 的 Substore 订阅转换脚本 (零干扰兼容版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [关键修复] 自动补全缺失的 servername (SNI)，解决 Vless/Trojan 全红。
-2. [回滚] 撤销强制 skip-cert-verify，防止误杀 Reality 节点。
-3. [网络] 强制关闭 TCP Fast Open (TFO)，防止握手堵塞。
-4. [保留] Hy2 指纹移除、DNS 完美配置、TikTok 规则。
+1. [回滚] 停止对单个节点指纹 (fingerprint) 的增删改，尊重机场原始配置。
+2. [回滚] 停止强制 skip-cert-verify，防止 Reality 节点验证失败。
+3. [保留] 仅删除 "全局" 指纹，解决 Hy2/Tuic 协议冲突。
+4. [保留] 完美 DNS 配置 + TikTok/YouTube 规则 + 分组策略。
 */
 
 // ================= 1. 基础工具 =================
@@ -29,7 +29,7 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 =================
+// ================= 3. 规则配置 (Geosite 集合版) =================
 const baseRules = [
     // 0. 精细策略
     `DOMAIN-SUFFIX,steamcontent.com,${PROXY_GROUPS.DIRECT}`,
@@ -77,7 +77,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (保持复刻) =================
+// ================= 4. DNS 配置 (完美复刻版) =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -141,10 +141,11 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 (急救修复逻辑) =================
+// ================= 6. 主程序 (零干扰兼容版) =================
 function main(e) {
     try {
-        // 1. 强力清除全局指纹
+        // 🚨 1. 全局清理：这是唯一必须删除的全局设置
+        // 删掉它解决了 Hy2/Tuic 的大面积冲突
         if (e['global-client-fingerprint']) delete e['global-client-fingerprint'];
 
         let rawProxies = e.proxies || [];
@@ -155,14 +156,13 @@ function main(e) {
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
 
-            // ================== 🚑 节点深度修复 START ==================
-            
-            // A. 基础属性修复
-            if (p.udp === undefined) p.udp = true; // 开启UDP
-            if (p.tfo !== undefined) p.tfo = false; // 🚫 强制关闭 TFO (防止握手超时)
+            // ================== 🛡️ 保守修复策略 START ==================
+            // 2. 基础补全：只做最安全的修改
+            if (p.udp === undefined) p.udp = true; 
+            if (p.tfo !== undefined) p.tfo = false; // 关闭 TFO 通常更稳定
 
-            // B. SNI (ServerName) 补全 - 解决 Vless/Trojan 全红的核心
-            // 如果没有 servername，但有 host 或 sni，则复制过来
+            // 3. SNI 补全：这步很关键，防止 Clash Meta 读不出 host
+            // 如果只有 host 没有 servername，就复制一份
             if (!p.servername) {
                 if (p.sni) p.servername = p.sni;
                 else if (p.host) p.servername = p.host;
@@ -170,21 +170,11 @@ function main(e) {
                     p.servername = p['ws-opts'].headers.Host;
                 }
             }
-
-            // C. Hy2 保护
-            if (p.type === 'hysteria2' && p['client-fingerprint']) {
-                delete p['client-fingerprint'];
-            }
             
-            // D. Reality 保护 (不要强制 skip-cert-verify，除非它本来就没有)
-            // 如果不是 Reality 且使用了 TLS，尝试开启跳过验证（救活自签名）
-            // 如果是 Reality (通常有 publicKey)，则绝对不要动 skip-cert-verify
-            const isReality = (p['reality-opts'] || p.realityOpts);
-            if (!isReality && p.tls && p['skip-cert-verify'] === undefined) {
-                p['skip-cert-verify'] = true;
-            }
-
-            // ================== 🚑 节点深度修复 END ==================
+            // 🛑 4. 关键：彻底停止对指纹 (client-fingerprint) 和证书 (skip-cert-verify) 的干预！
+            // 之前的脚本在这里做了太多的 "自作聪明" 的修改，导致部分机场节点验证失败。
+            // 现在完全保留订阅原样的设置。
+            // ================== 🛡️ 保守修复策略 END ==================
 
             if (p.name.includes(strictLandingKeyword)) {
                 if (landing) {
