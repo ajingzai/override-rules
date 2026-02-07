@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (终极全覆盖版)
+powerfullz 的 Substore 订阅转换脚本 (最终完美版 - 修复 Hy2)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [Steam] 实现 社区走代理 / 下载走直连 的精细分流。
-2. [微软] OneDrive 走代理加速，系统更新走直连。
-3. [补全] 覆盖国内外 80+ 个高频域名 (携程/滴滴/Figma/Docker等)。
-4. [核心] 保留 YouTube/TikTok/Twitter 的所有隐形域名修复。
+1. [修复] 移除 global-client-fingerprint，解决 Hysteria2 节点全红超时问题。
+2. [修复] 包含 YouTube 头像 (ggpht) 及 TikTok 视频 (反QUIC) 修复。
+3. [分流] Steam下载直连/社区代理；微软OneDrive代理/更新直连。
+4. [全量] 覆盖 Twitter图片、GitHub Raw 等隐形域名。
 */
 
 // ================= 1. 基础工具 =================
@@ -29,7 +29,7 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 (终极全覆盖) =================
+// ================= 3. 规则配置 (全能版) =================
 const baseRules = [
     // ------------------------------------------------
     // ➤ 0. 特殊直连 (AI / 地图 / 下载)
@@ -269,7 +269,7 @@ function buildDnsConfig() {
     return {
         enable: true,
         ipv6: false,
-        "prefer-h3": false, // 保持 false
+        "prefer-h3": false, // 保持 false (修复 TikTok)
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
@@ -341,7 +341,7 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 =================
+// ================= 6. 主程序 (修复 Hysteria2) =================
 function main(e) {
     try {
         let rawProxies = e.proxies || [];
@@ -383,7 +383,7 @@ function main(e) {
             mode: "rule",
             "unified-delay": true,
             "tcp-concurrent": true,
-            "global-client-fingerprint": "chrome",
+            // 🚫 已删除 global-client-fingerprint 以修复 Hy2/UDP 节点
             "listeners": autoListeners,
             "proxy-groups": u,
             rules: baseRules,
