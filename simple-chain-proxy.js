@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口 + 截图 DNS + 截图嗅探版)
+powerfullz 的 Substore 订阅转换脚本 (修复报错版 - 完美适配 Clash Party)
 */
 
 // ================= 1. 基础工具 =================
@@ -87,20 +87,23 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 嗅探配置 (新增模块) =================
+// ================= 5. 嗅探配置 (修复版) =================
 function buildSnifferConfig() {
     return {
         "enable": true,
-        "parse-pure-ip": true,     // 对真实 IP 进行嗅探
-        "force-domain": [],        // 强制域名嗅探列表 (空)
-        "sniffing": {
-            "dest-override": ["http", "tls"]
-        },
+        "parse-pure-ip": true,     // 对应：对真实 IP 映射嗅探
+        "override-dest": true,     // 对应：覆盖连接地址 (自动修复目标)
+        "force-domain": [],        // 对应：强制域名嗅探 (空)
+        
+        // 对应：跳过域名嗅探
         "skip-domain": [
-            "+.push.apple.com"     // 跳过 Apple 推送
+            "+.push.apple.com"
         ],
-        "skip-src-address": [],
-        // 跳过目标 IP (Telegram 网段，完全参照截图)
+        
+        // 对应：HTTP/TLS 端口嗅探 (使用标准白名单格式)
+        "port-whitelist": [80, 443],
+        
+        // 对应：跳过目标地址嗅探 (Telegram IP 段)
         "skip-dst-address": [
             "91.105.192.0/23",
             "91.108.4.0/22",
@@ -114,10 +117,6 @@ function buildSnifferConfig() {
             "2001:b28:f23c::/47",
             "2001:b28:f23f::/48",
             "2a0a:f280:203::/48"
-        ],
-        "port-whitelist": [
-            "80", 
-            "443"
         ]
     };
 }
@@ -181,7 +180,7 @@ function main(e) {
 
         if (finalProxies.length === 0) return e; 
 
-        // 监听端口生成
+        // 监听端口生成 (8000+)
         const autoListeners = [];
         let startPort = 8000;
         finalProxies.forEach(proxy => {
@@ -212,7 +211,7 @@ function main(e) {
             "proxy-groups": u,
             rules: baseRules,
             dns: buildDnsConfig(),
-            sniffer: buildSnifferConfig() // 注入嗅探配置
+            sniffer: buildSnifferConfig()
         };
     } catch (error) {
         console.log("Script Error: " + error);
