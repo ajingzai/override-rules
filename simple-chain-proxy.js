@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版)
+powerfullz 的 Substore 订阅转换脚本 (修复报错版 - 完美适配 Clash Party)
 */
 
 // ================= 1. 基础工具 =================
@@ -59,7 +59,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (完全参照截图) =================
+// ================= 4. DNS 配置 =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -75,17 +75,9 @@ function buildDnsConfig() {
             "ntp.*.com": "223.5.5.5",
             "+.market.xiaomi.com": "223.5.5.5"
         },
-        "default-nameserver": [
-            "tls://223.5.5.5"
-        ],
-        "proxy-server-nameserver": [
-            "https://doh.pub/dns-query",
-            "https://dns.alidns.com/dns-query"
-        ],
-        "nameserver": [
-            "https://doh.pub/dns-query",
-            "https://dns.alidns.com/dns-query"
-        ],
+        "default-nameserver": ["tls://223.5.5.5"],
+        "proxy-server-nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
+        "nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
@@ -95,7 +87,41 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (精简版) =================
+// ================= 5. 嗅探配置 (修复版) =================
+function buildSnifferConfig() {
+    return {
+        "enable": true,
+        "parse-pure-ip": true,     // 对应：对真实 IP 映射嗅探
+        "override-dest": true,     // 对应：覆盖连接地址 (自动修复目标)
+        "force-domain": [],        // 对应：强制域名嗅探 (空)
+        
+        // 对应：跳过域名嗅探
+        "skip-domain": [
+            "+.push.apple.com"
+        ],
+        
+        // 对应：HTTP/TLS 端口嗅探 (使用标准白名单格式)
+        "port-whitelist": [80, 443],
+        
+        // 对应：跳过目标地址嗅探 (Telegram IP 段)
+        "skip-dst-address": [
+            "91.105.192.0/23",
+            "91.108.4.0/22",
+            "91.108.8.0/21",
+            "91.108.16.0/21",
+            "91.108.56.0/22",
+            "95.161.64.0/20",
+            "149.154.160.0/20",
+            "185.76.151.0/24",
+            "2001:67c:4e8::/48",
+            "2001:b28:f23c::/47",
+            "2001:b28:f23f::/48",
+            "2a0a:f280:203::/48"
+        ]
+    };
+}
+
+// ================= 6. 策略组生成 =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     if (!proxies || proxies.length === 0) return [];
@@ -108,7 +134,6 @@ function buildProxyGroups(proxies, landing) {
         ? [PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.MANUAL, "DIRECT"];
 
-    // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
@@ -124,9 +149,7 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 04. 手动切换
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: frontProxies.length ? frontProxies : ["DIRECT"] });
-    
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
@@ -134,7 +157,7 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 =================
+// ================= 7. 主程序 =================
 function main(e) {
     try {
         let rawProxies = e.proxies || [];
@@ -157,9 +180,7 @@ function main(e) {
 
         if (finalProxies.length === 0) return e; 
 
-        // ============================================
-        // 【新增】为每个节点生成独立的监听端口 (从8000开始)
-        // ============================================
+        // 监听端口生成 (8000+)
         const autoListeners = [];
         let startPort = 8000;
         finalProxies.forEach(proxy => {
@@ -186,10 +207,11 @@ function main(e) {
             "unified-delay": true,
             "tcp-concurrent": true,
             "global-client-fingerprint": "chrome",
-            "listeners": autoListeners, // 这里输出了监听配置
+            "listeners": autoListeners,
             "proxy-groups": u,
             rules: baseRules,
-            dns: buildDnsConfig()
+            dns: buildDnsConfig(),
+            sniffer: buildSnifferConfig()
         };
     } catch (error) {
         console.log("Script Error: " + error);
