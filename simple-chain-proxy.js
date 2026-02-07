@@ -1,12 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (Modified v2)
+powerfullz 的 Substore 订阅转换脚本 (Modified v3)
 优化内容：
 1. 自动剔除官网、邮箱、异常提示等无用节点
 2. 纯落地节点自动重命名添加“自建”后缀
-3. 分组隔离：
-   - 国家分组/功能分组：严禁出现“落地”节点
-   - 落地节点分组：专属存放落地节点
-   - 前置代理/手动选择：包含所有节点（全集）
+3. 严格隔离：
+   - 手动选择/前置代理/国家分组：全部【不包含】落地节点
+   - 落地节点分组：【仅包含】落地节点（且排除家宽）
 */
 
 // ==================== 工具函数 ====================
@@ -71,8 +70,6 @@ const PROXY_GROUPS = {
 const buildList = (...e) => e.flat().filter(Boolean);
 
 function buildBaseLists({ landing: e, lowCost: t, countryGroupNames: o }) {
-    // 基础列表中不再自动把 LANDING 加入到 Select 或 Fallback 中，保证隔离
-    // 只有 Manual 和 Direct 保持基础
     const r = buildList(PROXY_GROUPS.FALLBACK, e && PROXY_GROUPS.LANDING, o, t && PROXY_GROUPS.LOW_COST, PROXY_GROUPS.MANUAL, "DIRECT");
     return {
         defaultProxies: buildList(PROXY_GROUPS.SELECT, o, t && PROXY_GROUPS.LOW_COST, PROXY_GROUPS.MANUAL, PROXY_GROUPS.DIRECT),
@@ -207,7 +204,6 @@ function parseCountries(e) {
     for (const [e, t] of Object.entries(countriesMeta)) n[e] = new RegExp(t.pattern.replace(/^\(\?i\)/, ""));
     for (const e of t) {
         const t = e.name || "";
-        // 统计时先不排除，后续生成分组时再正则过滤
         for (const [e, o] of Object.entries(n))
             if (o.test(t)) {
                 r[e] = (r[e] || 0) + 1;
@@ -225,7 +221,6 @@ function buildCountryProxyGroups({ countries: e, landing: t, loadBalance: o }) {
         s = o ? "load-balance" : "url-test";
     
     // 【修改点】：定义一个通用的排除规则，所有国家分组都必须排除“落地”
-    // 同时排除家宽、星链和低倍率
     const excludePattern = `(?i)落地|家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|${n}`;
 
     for (const l of e) {
@@ -236,7 +231,6 @@ function buildCountryProxyGroups({ countries: e, landing: t, loadBalance: o }) {
             icon: e.icon,
             "include-all": !0,
             filter: e.pattern,
-            // 强制排除所有“落地”相关的节点
             "exclude-filter": excludePattern,
             type: s
         };
@@ -249,28 +243,28 @@ function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, low
     const a = t.includes("台湾"),
         c = t.includes("香港"),
         p = t.includes("美国");
-    
-    // 前置代理不再使用 filter 过滤，而是直接使用 all (因为用户要求包含所有节点)
-    // 但为了确保结构正确，通常 Sub-Store 的 select type 会默认列出 names，
-    // 使用 include-all: true 即可包含所有 proxies。
 
     return [{
         name: PROXY_GROUPS.SELECT,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Proxy.png",
         type: "select",
-        proxies: l // 这里引用的 list 已经排除了落地（因为 country groups 排除了）
+        proxies: l 
     }, {
         name: PROXY_GROUPS.MANUAL,
         icon: "https://gcore.jsdelivr.net/gh/shindgewongxj/WHATSINStash@master/icon/select.png",
-        "include-all": !0, // 【修改点】：手动选择包含所有节点
+        "include-all": !0,
+        // 【修改点】：手动选择也排除落地节点
+        "exclude-filter": "(?i)落地", 
         type: "select"
     }, 
     e ? {
         name: "前置代理",
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
         type: "select",
-        "include-all": !0, // 【修改点】：前置代理包含所有节点（包括落地、家宽等）
-        proxies: [] // include-all 生效
+        "include-all": !0, 
+        // 【修改点】：前置代理也排除落地节点
+        "exclude-filter": "(?i)落地",
+        proxies: [] 
     } : null, 
     e ? {
         name: PROXY_GROUPS.LANDING,
