@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (分组排序优化版)
+powerfullz 的 Substore 订阅转换脚本 (TikTok 修复版 + 分组排序优化)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [排序] 将 "前置代理"、"落地节点"、"手动切换" 提权至顶部，紧跟在 "节点选择" 之后。
-2. [重构] 移除负载均衡，采用精细化 App 策略组。
-3. [保底] UDP/QUIC 默认放行。
+1. [修复] 补全 TikTok 核心域名(tiktokv.com等) 并关闭 QUIC，解决视频加载失败问题。
+2. [排序] 将 "前置代理"、"落地节点"、"手动切换" 提权至顶部。
+3. [重构] 移除负载均衡，采用精细化 App 策略组。
+4. [保底] UDP/QUIC 默认放行。
 */
 
 // ================= 1. 基础工具 =================
@@ -33,7 +34,7 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 =================
+// ================= 3. 规则配置 (含 TikTok 修复) =================
 const baseRules = [
     // --- 0. 特殊直连 ---
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
@@ -73,9 +74,14 @@ const baseRules = [
     `DOMAIN-SUFFIX,primevideo.com,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,iq.com,${PROXY_GROUPS.NETFLIX}`,
 
-    // --- 4. TikTok ---
+    // --- 4. TikTok (重点修复区域) ---
+    // 补全核心域名，特别是 tiktokv.com (视频流) 和 byteoversea (字节海外)
     `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.TIKTOK}`,
     `DOMAIN-SUFFIX,tiktokcdn.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,tik-tokapi.com,${PROXY_GROUPS.TIKTOK}`,
     `DOMAIN-SUFFIX,musically.com,${PROXY_GROUPS.TIKTOK}`,
     `DOMAIN-KEYWORD,tiktok,${PROXY_GROUPS.TIKTOK}`,
 
@@ -121,12 +127,12 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 =================
+// ================= 4. DNS 配置 (重点修复：禁用 H3) =================
 function buildDnsConfig() {
     return {
         enable: true,
         ipv6: false,
-        "prefer-h3": true,
+        "prefer-h3": false, // 🚨【关键修复】设置为 false，强制 TikTok 走 TCP 协议，防止视频加载转圈
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
@@ -266,4 +272,3 @@ function main(e) {
         return e;
     }
 }
-
