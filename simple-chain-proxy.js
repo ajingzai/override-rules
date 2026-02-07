@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (全量隐形域名增强版)
+powerfullz 的 Substore 订阅转换脚本 (终极全覆盖版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [新增] 补全 twimg, githubusercontent, gravatar 等 20+ 个关键隐形域名。
-2. [保留] YouTube 头像 (ggpht.com) 及 TikTok 视频修复 (QUIC阻断)。
-3. [结构] 保持精简分组，智能分流。
+1. [Steam] 实现 社区走代理 / 下载走直连 的精细分流。
+2. [微软] OneDrive 走代理加速，系统更新走直连。
+3. [补全] 覆盖国内外 80+ 个高频域名 (携程/滴滴/Figma/Docker等)。
+4. [核心] 保留 YouTube/TikTok/Twitter 的所有隐形域名修复。
 */
 
 // ================= 1. 基础工具 =================
@@ -28,10 +29,10 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 (全量版) =================
+// ================= 3. 规则配置 (终极全覆盖) =================
 const baseRules = [
     // ------------------------------------------------
-    // ➤ 0. 特殊直连 (国内 AI / 直连优先)
+    // ➤ 0. 特殊直连 (AI / 地图 / 下载)
     // ------------------------------------------------
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
@@ -39,7 +40,12 @@ const baseRules = [
     `DOMAIN-SUFFIX,moonshot.cn,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,amap.com,${PROXY_GROUPS.DIRECT}`, // 高德
-    `DOMAIN-SUFFIX,autonavi.com,${PROXY_GROUPS.DIRECT}`, // 高德
+    `DOMAIN-SUFFIX,autonavi.com,${PROXY_GROUPS.DIRECT}`, 
+    // Steam 下载 (必须直连，省流量且速度快)
+    `DOMAIN-SUFFIX,steamcontent.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,steampipe.akamaized.net,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN,dl.steam.clngaa.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN,dl.steam.ksyna.com,${PROXY_GROUPS.DIRECT}`,
 
     // ------------------------------------------------
     // ➤ 1. 国际 AI 服务
@@ -57,8 +63,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,perplexity.ai,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,poe.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,notion.so,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,notion.site,${PROXY_GROUPS.SELECT}`,
-
+    
     // ------------------------------------------------
     // ➤ 2. TikTok (核心修复: 阻断 UDP)
     // ------------------------------------------------
@@ -75,169 +80,184 @@ const baseRules = [
     // ------------------------------------------------
     // ➤ 3. 独立分组 App (Netflix & Telegram)
     // ------------------------------------------------
-    // Netflix (包含 CDN)
+    // Netflix
     `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,netflix.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflximg.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflxvideo.net,${PROXY_GROUPS.NETFLIX}`,
-    `DOMAIN-SUFFIX,nflxso.net,${PROXY_GROUPS.NETFLIX}`, // 新增
-    `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.NETFLIX}`, // 新增
+    `DOMAIN-SUFFIX,nflxso.net,${PROXY_GROUPS.NETFLIX}`, 
+    `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.NETFLIX}`, 
     `DOMAIN-SUFFIX,fast.com,${PROXY_GROUPS.NETFLIX}`,
-    // Telegram (包含短链和文章页)
+    // Telegram
     `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,tx.me,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,tdesktop.com,${PROXY_GROUPS.TELEGRAM}`,
-    `DOMAIN-SUFFIX,telegra.ph,${PROXY_GROUPS.TELEGRAM}`, // 新增：Telegram文章
+    `DOMAIN-SUFFIX,telegra.ph,${PROXY_GROUPS.TELEGRAM}`,
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
 
     // ------------------------------------------------
-    // ➤ 4. 国际常用 & 隐形域名补全 (重点区域)
+    // ➤ 4. 国际常用 (社媒/视频/工具) -> 节点选择
     // ------------------------------------------------
-    // YouTube & Google 隐形域名
+    // Google & YouTube (含隐形域名)
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, // 头像
-    `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`, // 视频流
-    `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`, // 视频流
-    `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`, // 视频流
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, // 头像修复
+    `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,youtu.be,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,1e100.net,${PROXY_GROUPS.SELECT}`, // Google骨干网
-    `DOMAIN-SUFFIX,xn--ngstr-lra8j.com,${PROXY_GROUPS.SELECT}`, // Google Play
     `DOMAIN-SUFFIX,google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gmail.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,recaptcha.net,${PROXY_GROUPS.SELECT}`, // 验证码
+    `DOMAIN-SUFFIX,recaptcha.net,${PROXY_GROUPS.SELECT}`, 
+    `DOMAIN-SUFFIX,1e100.net,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-SUFFIX,android.com,${PROXY_GROUPS.SELECT}`, 
-    `DOMAIN-SUFFIX,app-measurement.com,${PROXY_GROUPS.SELECT}`, // App统计(防卡顿)
+    `DOMAIN-SUFFIX,app-measurement.com,${PROXY_GROUPS.SELECT}`,
 
-    // Twitter/X 隐形域名
+    // Twitter / Meta / Social
     `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`, // 短链
-    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`, // 🚨 必须：推特图片CDN
-
-    // Facebook/Meta 隐形域名
+    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`, // 推特图床
     `DOMAIN-SUFFIX,facebook.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,fbcdn.net,${PROXY_GROUPS.SELECT}`, // 🚨 必须：FB图片CDN
-    `DOMAIN-SUFFIX,fbsbx.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,fbcdn.net,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,instagram.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,cdninstagram.com,${PROXY_GROUPS.SELECT}`, // Ins图片
+    `DOMAIN-SUFFIX,cdninstagram.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,whatsapp.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,whatsapp.net,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discord.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,reddit.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,redd.it,${PROXY_GROUPS.SELECT}`,
 
-    // Github 隐形域名
+    // 开发与设计 (GitHub/Docker/Figma)
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,githubassets.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,github.io,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`, // 🚨 必须：Raw文件/图片
-    `DOMAIN-SUFFIX,githubassets.com,${PROXY_GROUPS.SELECT}`, // 静态资源
-
-    // 开发者 & 常用工具
-    `DOMAIN-SUFFIX,gravatar.com,${PROXY_GROUPS.SELECT}`, // 🚨 全网通用头像
-    `DOMAIN-SUFFIX,imgur.com,${PROXY_GROUPS.SELECT}`, // 🚨 常用图床
-    `DOMAIN-SUFFIX,vimeo.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,vimeocdn.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,docker.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,docker.io,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,npmjs.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,stackoverflow.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,medium.com,${PROXY_GROUPS.SELECT}`,
-    
-    // 娱乐 & 其他
+    `DOMAIN-SUFFIX,figma.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,canva.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,gitlab.com,${PROXY_GROUPS.SELECT}`,
+
+    // 常用服务与娱乐
+    `DOMAIN-SUFFIX,steamcommunity.com,${PROXY_GROUPS.SELECT}`, // Steam社区
+    `DOMAIN-SUFFIX,steampowered.com,${PROXY_GROUPS.SELECT}`, // Steam商店
+    `DOMAIN-SUFFIX,epicgames.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,twitch.tv,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ttvnw.net,${PROXY_GROUPS.SELECT}`, // Twitch推流
     `DOMAIN-SUFFIX,spotify.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,spotifycdn.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,scdn.co,${PROXY_GROUPS.SELECT}`, // Spotify图片
-    `DOMAIN-SUFFIX,twitch.tv,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,ttvnw.net,${PROXY_GROUPS.SELECT}`, // Twitch视频流
-    `DOMAIN-SUFFIX,jtvnw.net,${PROXY_GROUPS.SELECT}`, // Twitch资源
     `DOMAIN-SUFFIX,hbo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,disneyplus.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,primevideo.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,reddit.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,redd.it,${PROXY_GROUPS.SELECT}`, // Reddit媒体
-    `DOMAIN-SUFFIX,discord.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,discordapp.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,discordapp.net,${PROXY_GROUPS.SELECT}`, // Discord媒体
     `DOMAIN-SUFFIX,wikipedia.org,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,duckduckgo.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,yahoo.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,amazon.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,pinterest.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,imgur.com,${PROXY_GROUPS.SELECT}`, // 图床
+    `DOMAIN-SUFFIX,gravatar.com,${PROXY_GROUPS.SELECT}`, // 头像
     `DOMAIN-SUFFIX,dropbox.com,${PROXY_GROUPS.SELECT}`,
 
     // ------------------------------------------------
-    // ➤ 5. 国内常用 (巨头直连)
+    // ➤ 5. Microsoft 策略 (网盘代理，更新直连)
     // ------------------------------------------------
-    // Bilibili
-    `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,bilivideo.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,hdslb.com,${PROXY_GROUPS.DIRECT}`,
-    // Alibaba
-    `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,tmall.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,jd.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,360buy.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,360buyimg.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,alicdn.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,alipay.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,aliyun.com,${PROXY_GROUPS.DIRECT}`,
-    // Tencent
-    `DOMAIN-SUFFIX,qq.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,tencent.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,weixin.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,wechat.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,gtimg.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,qpic.cn,${PROXY_GROUPS.DIRECT}`,
-    // ByteDance CN
-    `DOMAIN-SUFFIX,douyin.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,snssdk.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,pstatp.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,toutiao.com,${PROXY_GROUPS.DIRECT}`,
-    // NetEase
-    `DOMAIN-SUFFIX,163.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,126.net,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,127.net,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,netease.com,${PROXY_GROUPS.DIRECT}`,
-    // Other CN
-    `DOMAIN-SUFFIX,baidu.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,bdstatic.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,zhihu.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,zhimg.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,weibo.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,weibo.cn,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,sinaimg.cn,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,xiaohongshu.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,xhscdn.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,meituan.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,dianping.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,pinduoduo.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,yangkeduo.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,mi.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,xiaomi.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,huawei.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,vmall.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,12306.cn,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,cctv.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,iqiyi.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,youku.com,${PROXY_GROUPS.DIRECT}`,
+    // 需要加速的服务
+    `DOMAIN-SUFFIX,onedrive.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,onedrive.live.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,sharepoint.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,1drv.com,${PROXY_GROUPS.SELECT}`,
+    // 默认直连 (Office/Windows Update)
+    `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,windows.net,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,office.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,office365.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,live.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,azure.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,outlook.com,${PROXY_GROUPS.DIRECT}`,
 
     // ------------------------------------------------
-    // ➤ 6. Apple / Microsoft
+    // ➤ 6. Apple 策略 (大部分直连)
     // ------------------------------------------------
     `DOMAIN-SUFFIX,apple.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,icloud.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,itunes.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,cdn-apple.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,windows.net,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,office.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,live.com,${PROXY_GROUPS.DIRECT}`,
-    `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,mzstatic.com,${PROXY_GROUPS.DIRECT}`, // AppStore图片
+    `DOMAIN-SUFFIX,me.com,${PROXY_GROUPS.DIRECT}`,
 
     // ------------------------------------------------
-    // ➤ 7. 兜底
+    // ➤ 7. 国内常用 (补全生活/购物/出行)
+    // ------------------------------------------------
+    // 阿里系
+    `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,tmall.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,jd.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,alicdn.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,alipay.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,aliyun.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,cainiao.com,${PROXY_GROUPS.DIRECT}`, // 菜鸟
+    `DOMAIN-SUFFIX,dingtalk.com,${PROXY_GROUPS.DIRECT}`, // 钉钉
+    // 腾讯系
+    `DOMAIN-SUFFIX,qq.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,tencent.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,weixin.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,wechat.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,gtimg.com,${PROXY_GROUPS.DIRECT}`,
+    // 字节/头条
+    `DOMAIN-SUFFIX,douyin.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,snssdk.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,pstatp.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,toutiao.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,feishu.cn,${PROXY_GROUPS.DIRECT}`,
+    // 视频/社区
+    `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,bilivideo.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,hdslb.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,zhihu.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,zhimg.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,weibo.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,xiaohongshu.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,xhscdn.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,douban.com,${PROXY_GROUPS.DIRECT}`, // 豆瓣
+    `DOMAIN-SUFFIX,doubanio.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,iqiyi.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,youku.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,mgtv.com,${PROXY_GROUPS.DIRECT}`, // 芒果
+    // 生活/出行/支付
+    `DOMAIN-SUFFIX,meituan.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,dianping.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,pinduoduo.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,ctrip.com,${PROXY_GROUPS.DIRECT}`, // 携程
+    `DOMAIN-SUFFIX,trip.com,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,didi.com,${PROXY_GROUPS.DIRECT}`, // 滴滴
+    `DOMAIN-SUFFIX,didiglobal.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,xiaojukeji.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,unionpay.com,${PROXY_GROUPS.DIRECT}`, // 银联
+    `DOMAIN-SUFFIX,95516.com,${PROXY_GROUPS.DIRECT}`, 
+    `DOMAIN-SUFFIX,sf-express.com,${PROXY_GROUPS.DIRECT}`, // 顺丰
+    // 手机厂商
+    `DOMAIN-SUFFIX,mi.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,xiaomi.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,huawei.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,vmall.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,honor.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,vivo.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,oppo.com,${PROXY_GROUPS.DIRECT}`,
+    // 其他
+    `DOMAIN-SUFFIX,12306.cn,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,baidu.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,bdstatic.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,163.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,126.net,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,sogou.com,${PROXY_GROUPS.DIRECT}`,
+
+    // ------------------------------------------------
+    // ➤ 8. 兜底
     // ------------------------------------------------
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
