@@ -1,13 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (智能分诊修复版)
+powerfullz 的 Substore 订阅转换脚本 (绝对纯净·零修改版)
 https://github.com/powerfullz/override-rules
 
-🛠 修复逻辑升级：
-1. [智能诊断] 区分 Reality 和普通 TLS 节点，分别施策。
-2. [Reality] 缺失指纹时自动补全 chrome，防止握手失败。
-3. [TLS/Trojan] 自动补全 SNI 并跳过证书验证，救活"全红"节点。
-4. [Hysteria2] 保持无指纹纯净模式。
-5. [DNS] 保持你指定的完美 DNS 配置。
+配置说明：
+1. [零修改] 绝对不修改任何节点的内部参数 (指纹/SNI/证书等)，原汁原味。
+2. [保留] 仅保留分组排序、分流规则、以及你指定的完美 DNS 配置。
+3. [必要] 仅删除全局冲突字段，防止不同协议打架。
 */
 
 // ================= 1. 基础工具 =================
@@ -30,7 +28,7 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 =================
+// ================= 3. 规则配置 (Geosite 集合版) =================
 const baseRules = [
     // 0. 精细策略
     `DOMAIN-SUFFIX,steamcontent.com,${PROXY_GROUPS.DIRECT}`,
@@ -78,7 +76,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (完美复刻) =================
+// ================= 4. DNS 配置 (你的完美截图版) =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -142,10 +140,13 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 (智能诊断修复) =================
+// ================= 6. 主程序 (绝对纯净模式) =================
 function main(e) {
     try {
-        // 1. 删除全局指纹 (Hy2 必须)
+        // 🚨 仅做这唯一的一处删除：
+        // 删除最外层的 global-client-fingerprint，因为它会强制所有协议模拟 Chrome
+        // 这会导致 Hysteria2 协议直接坏掉，所以必须删。
+        // 除此之外，不碰任何单个节点的配置。
         if (e['global-client-fingerprint']) delete e['global-client-fingerprint'];
 
         let rawProxies = e.proxies || [];
@@ -156,35 +157,8 @@ function main(e) {
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
 
-            // ================== 🏥 智能诊断科 START ==================
-            // A. 通用体检
-            if (p.udp === undefined) p.udp = true; 
-            if (p.tfo !== undefined) p.tfo = false; // 关闭TFO保平安
-
-            // B. SNI 补全 (Clash Meta 找不到 ServerName 就无法 TLS 握手)
-            if (!p.servername) {
-                if (p.sni) p.servername = p.sni;
-                else if (p.host) p.servername = p.host;
-                else if (p['ws-opts']?.headers?.Host) p.servername = p['ws-opts'].headers.Host;
-            }
-
-            // C. 对症下药
-            if (p.type === 'hysteria2') {
-                // 病症：Hy2 怕指纹
-                // 处方：删除指纹
-                if (p['client-fingerprint']) delete p['client-fingerprint'];
-            
-            } else if (p['reality-opts'] || p.realityOpts) {
-                // 病症：Reality 必须有指纹，且不能随意跳过证书
-                // 处方：缺指纹就补 chrome，不要动 skip-cert-verify
-                if (!p['client-fingerprint']) p['client-fingerprint'] = 'chrome';
-            
-            } else if (p.tls) {
-                // 病症：普通 TLS (Vless/Trojan/VMess) 经常遇到自签名证书或 SNI 错乱
-                // 处方：强制跳过证书验证，这是救活垃圾机场的神药
-                if (p['skip-cert-verify'] === undefined) p['skip-cert-verify'] = true;
-            }
-            // ================== 🏥 智能诊断科 END ==================
+            // ⚠️ 注意：此处没有任何修改节点属性的代码 (p.xxx = yyy)
+            // 保持机场原始配置的原汁原味
 
             if (p.name.includes(strictLandingKeyword)) {
                 if (landing) {
