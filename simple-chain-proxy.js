@@ -1,11 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (Modified v3)
+powerfullz 的 Substore 订阅转换脚本 (Modified v4 - Hard Filter)
 优化内容：
 1. 自动剔除官网、邮箱、异常提示等无用节点
 2. 纯落地节点自动重命名添加“自建”后缀
-3. 严格隔离：
-   - 手动选择/前置代理/国家分组：全部【不包含】落地节点
-   - 落地节点分组：【仅包含】落地节点（且排除家宽）
+3. 【强制隔离修复】：在 JS 层面生成非落地节点白名单，强制赋予手动和前置分组，
+   彻底解决正则 exclude-filter 失效导致落地节点出现在前置代理的问题。
 */
 
 // ==================== 工具函数 ====================
@@ -220,7 +219,7 @@ function buildCountryProxyGroups({ countries: e, landing: t, loadBalance: o }) {
         n = "0\\.[0-5]|低倍率|省流|大流量|实验性",
         s = o ? "load-balance" : "url-test";
     
-    // 【修改点】：定义一个通用的排除规则，所有国家分组都必须排除“落地”
+    // 国家分组：强制使用 exclude-filter (双重保险，虽然 JS 传进来的 list 应该已经处理过，但 country 分组是基于 pattern 抓取的)
     const excludePattern = `(?i)落地|家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink|${n}`;
 
     for (const l of e) {
@@ -239,7 +238,8 @@ function buildCountryProxyGroups({ countries: e, landing: t, loadBalance: o }) {
     return r
 }
 
-function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, lowCost: r, defaultProxies: n, defaultProxiesDirect: s, defaultSelector: l, defaultFallback: i }) {
+// 【关键修改】：proxiesWhiteList 参数，用于接收非落地节点列表
+function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, lowCost: r, defaultProxies: n, defaultProxiesDirect: s, defaultSelector: l, defaultFallback: i, proxiesWhiteList: whitelist }) {
     const a = t.includes("台湾"),
         c = t.includes("香港"),
         p = t.includes("美国");
@@ -252,26 +252,24 @@ function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, low
     }, {
         name: PROXY_GROUPS.MANUAL,
         icon: "https://gcore.jsdelivr.net/gh/shindgewongxj/WHATSINStash@master/icon/select.png",
-        "include-all": !0,
-        // 【修改点】：手动选择也排除落地节点
-        "exclude-filter": "(?i)落地", 
-        type: "select"
+        // 【关键修复】：不使用 include-all，直接传入白名单数组
+        // 这样“落地”节点绝对不可能进入，因为它们根本不在 whitelist 数组里
+        type: "select",
+        proxies: whitelist 
     }, 
     e ? {
         name: "前置代理",
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
         type: "select",
-        "include-all": !0, 
-        // 【修改点】：前置代理也排除落地节点
-        "exclude-filter": "(?i)落地",
-        proxies: [] 
+        // 【关键修复】：同上，直接传入白名单数组
+        type: "select",
+        proxies: whitelist
     } : null, 
     e ? {
         name: PROXY_GROUPS.LANDING,
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Airport.png",
         type: "select",
         "include-all": !0,
-        // 仅包含“落地”，严格排除“家宽/家庭/星链”
         filter: "(?i)落地",
         "exclude-filter": "(?i)家宽|家庭|家庭宽带|商宽|商业宽带|星链|Starlink"
     } : null, {
@@ -412,6 +410,12 @@ function main(e) {
         }
     });
 
+    // 【关键步骤】：生成一个纯净的节点名称列表，排除所有含“落地”的节点
+    // 用于传给 Manual 和 Pre-proxy
+    const nonLandingProxies = rawProxies
+        .filter(p => !landingPattern.test(p.name))
+        .map(p => p.name);
+
     const t = { proxies: rawProxies };
 
     const o = parseCountries(t),
@@ -425,7 +429,17 @@ function main(e) {
             defaultFallback: c
         } = buildBaseLists({ landing: landing, lowCost: r, countryGroupNames: n }),
         p = buildCountryProxyGroups({ countries: s, landing: landing, loadBalance: loadBalance }),
-        u = buildProxyGroups({ landing: landing, countries: s, countryProxyGroups: p, lowCost: r, defaultProxies: l, defaultProxiesDirect: i, defaultSelector: a, defaultFallback: c }),
+        u = buildProxyGroups({ 
+            landing: landing, 
+            countries: s, 
+            countryProxyGroups: p, 
+            lowCost: r, 
+            defaultProxies: l, 
+            defaultProxiesDirect: i, 
+            defaultSelector: a, 
+            defaultFallback: c,
+            proxiesWhiteList: nonLandingProxies // 传入白名单
+        }),
         d = u.map(e => e.name);
     
     u.push({
