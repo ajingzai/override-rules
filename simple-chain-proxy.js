@@ -1,12 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (多机场兼容修复版)
+powerfullz 的 Substore 订阅转换脚本 (SNI 补全 + TFO 禁用修复版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [兼容] 新增 "节点体检" 模块，自动修复 Vless/Reality 缺失指纹的问题。
-2. [兼容] 强制所有 TLS 节点跳过证书验证 (skip-cert-verify)，救活自签名机场。
-3. [修复] 依然保持 Hy2 无指纹逻辑，确保 Hy2 和 Vless Reality 共存。
-4. [DNS] 保持完美复刻的 DNS 配置。
+1. [关键修复] 自动补全缺失的 servername (SNI)，解决 Vless/Trojan 全红。
+2. [回滚] 撤销强制 skip-cert-verify，防止误杀 Reality 节点。
+3. [网络] 强制关闭 TCP Fast Open (TFO)，防止握手堵塞。
+4. [保留] Hy2 指纹移除、DNS 完美配置、TikTok 规则。
 */
 
 // ================= 1. 基础工具 =================
@@ -29,11 +29,9 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 (Geosite 集合版) =================
+// ================= 3. 规则配置 =================
 const baseRules = [
-    // ------------------------------------------------
-    // ➤ 0. 必须手动指定的精细策略
-    // ------------------------------------------------
+    // 0. 精细策略
     `DOMAIN-SUFFIX,steamcontent.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,steampipe.akamaized.net,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN,dl.steam.clngaa.com,${PROXY_GROUPS.DIRECT}`,
@@ -41,22 +39,16 @@ const baseRules = [
     `DOMAIN-SUFFIX,windowsupdate.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
 
-    // ------------------------------------------------
-    // ➤ 1. 国际 AI
-    // ------------------------------------------------
+    // 1. AI
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,claude.ai,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,openai,${PROXY_GROUPS.SELECT}`,
 
-    // ------------------------------------------------
-    // ➤ 2. TikTok
-    // ------------------------------------------------
+    // 2. TikTok
     `GEOSITE,tiktok,${PROXY_GROUPS.SELECT}`, 
 
-    // ------------------------------------------------
-    // ➤ 3. 国际巨头集合
-    // ------------------------------------------------
+    // 3. 国际巨头
     `GEOSITE,youtube,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,google,${PROXY_GROUPS.SELECT}`,
     `GEOSITE,twitter,${PROXY_GROUPS.SELECT}`,
@@ -71,27 +63,21 @@ const baseRules = [
     `DOMAIN-SUFFIX,onedrive.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,sharepoint.com,${PROXY_GROUPS.SELECT}`,
 
-    // ------------------------------------------------
-    // ➤ 4. 常见的被墙列表
-    // ------------------------------------------------
+    // 4. 被墙列表
     `GEOSITE,gfw,${PROXY_GROUPS.SELECT}`,
 
-    // ------------------------------------------------
-    // ➤ 5. 国内直连集合
-    // ------------------------------------------------
+    // 5. 国内直连
     `GEOSITE,apple,${PROXY_GROUPS.DIRECT}`,
     `GEOSITE,bilibili,${PROXY_GROUPS.DIRECT}`,
     `GEOSITE,steam,${PROXY_GROUPS.DIRECT}`,
     `GEOSITE,cn,${PROXY_GROUPS.DIRECT}`,
 
-    // ------------------------------------------------
-    // ➤ 6. 兜底策略
-    // ------------------------------------------------
+    // 6. 兜底
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (完美复刻所有截图) =================
+// ================= 4. DNS 配置 (保持复刻) =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -108,14 +94,8 @@ function buildDnsConfig() {
             "+.msftncsi.com",
             "+.msftconnecttest.com"
         ],
-        "default-nameserver": [
-            "tls://223.5.5.5",
-            "119.29.29.29" 
-        ],
-        "nameserver": [
-            "https://doh.pub/dns-query",
-            "https://dns.alidns.com/dns-query"
-        ],
+        "default-nameserver": ["tls://223.5.5.5", "119.29.29.29"],
+        "nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
         "fallback": [
             "https://dns.google/dns-query",
             "https://1.1.1.1/dns-query",
@@ -125,15 +105,8 @@ function buildDnsConfig() {
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
-            "ipcidr": [
-                "240.0.0.0/4",
-                "0.0.0.0/32"
-            ],
-            "domain": [
-                "+.google.com",
-                "+.facebook.com",
-                "+.youtube.com"
-            ]
+            "ipcidr": ["240.0.0.0/4", "0.0.0.0/32"],
+            "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]
         }
     };
 }
@@ -146,48 +119,33 @@ function buildProxyGroups(proxies, landing) {
     const proxyNames = proxies.map(p => p.name);
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
-
     const mainProxies = landing 
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
-    
     const subProxies = [PROXY_GROUPS.AUTO, PROXY_GROUPS.SELECT, ...frontProxies];
 
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
-
     if (landing) {
         groups.push({ name: PROXY_GROUPS.FRONT, type: "select", proxies: [PROXY_GROUPS.AUTO, ...frontProxies] });
         groups.push({ name: PROXY_GROUPS.LANDING, type: "select", proxies: landingProxies.length ? landingProxies : ["DIRECT"] });
     }
-
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: [PROXY_GROUPS.AUTO, ...frontProxies] });
+    groups.push({ name: PROXY_GROUPS.AUTO, type: "url-test", proxies: frontProxies.length ? frontProxies : ["DIRECT"], interval: 300, tolerance: 50 });
     
-    groups.push({ 
-        name: PROXY_GROUPS.AUTO, 
-        type: "url-test", 
-        proxies: frontProxies.length ? frontProxies : ["DIRECT"],
-        interval: 300, 
-        tolerance: 50 
-    });
-
-    const customGroups = [PROXY_GROUPS.NETFLIX, PROXY_GROUPS.TELEGRAM];
-    customGroups.forEach(groupName => {
+    [PROXY_GROUPS.NETFLIX, PROXY_GROUPS.TELEGRAM].forEach(groupName => {
         groups.push({ name: groupName, type: "select", proxies: subProxies });
     });
 
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
-
     return groups;
 }
 
-// ================= 6. 主程序 (含多机场修复模块) =================
+// ================= 6. 主程序 (急救修复逻辑) =================
 function main(e) {
     try {
-        // 🚨 1. 全局清理：删除可能会干扰 Hy2 的全局指纹
-        if (e['global-client-fingerprint']) {
-            delete e['global-client-fingerprint'];
-        }
+        // 1. 强力清除全局指纹
+        if (e['global-client-fingerprint']) delete e['global-client-fingerprint'];
 
         let rawProxies = e.proxies || [];
         let finalProxies = [];
@@ -196,25 +154,37 @@ function main(e) {
 
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
+
+            // ================== 🚑 节点深度修复 START ==================
             
-            // ================== 🚑 节点急救包 START ==================
-            // 2. 通用修复：确保 UDP 开启，跳过证书验证 (解决自签名机场超时)
-            if (p.udp === undefined) p.udp = true;
-            if (p.tls || p['client-fingerprint']) {
-                p['skip-cert-verify'] = true; 
+            // A. 基础属性修复
+            if (p.udp === undefined) p.udp = true; // 开启UDP
+            if (p.tfo !== undefined) p.tfo = false; // 🚫 强制关闭 TFO (防止握手超时)
+
+            // B. SNI (ServerName) 补全 - 解决 Vless/Trojan 全红的核心
+            // 如果没有 servername，但有 host 或 sni，则复制过来
+            if (!p.servername) {
+                if (p.sni) p.servername = p.sni;
+                else if (p.host) p.servername = p.host;
+                else if (p['ws-opts'] && p['ws-opts'].headers && p['ws-opts'].headers.Host) {
+                    p.servername = p['ws-opts'].headers.Host;
+                }
             }
 
-            // 3. Vless/Reality 修复：如果缺失指纹，补全为 chrome
-            // (注意：仅针对 Vless，不碰 Hy2)
-            if (p.type === 'vless' && !p['client-fingerprint']) {
-                p['client-fingerprint'] = 'chrome';
-            }
-
-            // 4. Hysteria2 修复：确保没有指纹干扰
+            // C. Hy2 保护
             if (p.type === 'hysteria2' && p['client-fingerprint']) {
                 delete p['client-fingerprint'];
             }
-            // ================== 🚑 节点急救包 END ==================
+            
+            // D. Reality 保护 (不要强制 skip-cert-verify，除非它本来就没有)
+            // 如果不是 Reality 且使用了 TLS，尝试开启跳过验证（救活自签名）
+            // 如果是 Reality (通常有 publicKey)，则绝对不要动 skip-cert-verify
+            const isReality = (p['reality-opts'] || p.realityOpts);
+            if (!isReality && p.tls && p['skip-cert-verify'] === undefined) {
+                p['skip-cert-verify'] = true;
+            }
+
+            // ================== 🚑 节点深度修复 END ==================
 
             if (p.name.includes(strictLandingKeyword)) {
                 if (landing) {
