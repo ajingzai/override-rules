@@ -1,11 +1,12 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (全客户端通用 + 完美 DNS 复刻版)
+powerfullz 的 Substore 订阅转换脚本 (多机场兼容修复版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [DNS] 1:1 复刻截图中的 Fake-IP 过滤、Nameserver 和 Fallback 过滤规则。
-2. [补全] 自动配置了 Google/Cloudflare 为 Fallback DNS，确保你的过滤规则生效。
-3. [修复] 包含 Hy2 修复 (移除指纹)、TikTok/YouTube 修复及 Steam 分流。
+1. [兼容] 新增 "节点体检" 模块，自动修复 Vless/Reality 缺失指纹的问题。
+2. [兼容] 强制所有 TLS 节点跳过证书验证 (skip-cert-verify)，救活自签名机场。
+3. [修复] 依然保持 Hy2 无指纹逻辑，确保 Hy2 和 Vless Reality 共存。
+4. [DNS] 保持完美复刻的 DNS 配置。
 */
 
 // ================= 1. 基础工具 =================
@@ -98,7 +99,6 @@ function buildDnsConfig() {
         "ipv6": false,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
-        // 1. Fake-IP 过滤 (来自第一张截图)
         "fake-ip-filter": [
             "*.lan",
             "*.local",
@@ -108,25 +108,20 @@ function buildDnsConfig() {
             "+.msftncsi.com",
             "+.msftconnecttest.com"
         ],
-        // 2. 默认 DNS (来自第二张截图)
         "default-nameserver": [
             "tls://223.5.5.5",
             "119.29.29.29" 
         ],
-        // 3. 国内主 DNS (来自第二张截图)
         "nameserver": [
             "https://doh.pub/dns-query",
             "https://dns.alidns.com/dns-query"
         ],
-        // 4. 这里的 Fallback 必须配置，否则你的 "回退过滤" (截图3) 不会生效
-        // 我为你添加了标准的 Google/Cloudflare DoH，确保能在其他客户端通用
         "fallback": [
             "https://dns.google/dns-query",
             "https://1.1.1.1/dns-query",
             "tls://8.8.4.4",
             "tls://1.0.0.1"
         ],
-        // 5. 回退过滤设置 (来自第三张截图 - 关键！)
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
@@ -158,7 +153,6 @@ function buildProxyGroups(proxies, landing) {
     
     const subProxies = [PROXY_GROUPS.AUTO, PROXY_GROUPS.SELECT, ...frontProxies];
 
-    // 分组逻辑
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
@@ -187,10 +181,10 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 =================
+// ================= 6. 主程序 (含多机场修复模块) =================
 function main(e) {
     try {
-        // 🚨 1. 强力清除全局指纹 (修复 Hy2)
+        // 🚨 1. 全局清理：删除可能会干扰 Hy2 的全局指纹
         if (e['global-client-fingerprint']) {
             delete e['global-client-fingerprint'];
         }
@@ -202,9 +196,26 @@ function main(e) {
 
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
-            // 🚨 2. 确保 UDP 开启
-            if (!p.udp) p.udp = true;
             
+            // ================== 🚑 节点急救包 START ==================
+            // 2. 通用修复：确保 UDP 开启，跳过证书验证 (解决自签名机场超时)
+            if (p.udp === undefined) p.udp = true;
+            if (p.tls || p['client-fingerprint']) {
+                p['skip-cert-verify'] = true; 
+            }
+
+            // 3. Vless/Reality 修复：如果缺失指纹，补全为 chrome
+            // (注意：仅针对 Vless，不碰 Hy2)
+            if (p.type === 'vless' && !p['client-fingerprint']) {
+                p['client-fingerprint'] = 'chrome';
+            }
+
+            // 4. Hysteria2 修复：确保没有指纹干扰
+            if (p.type === 'hysteria2' && p['client-fingerprint']) {
+                delete p['client-fingerprint'];
+            }
+            // ================== 🚑 节点急救包 END ==================
+
             if (p.name.includes(strictLandingKeyword)) {
                 if (landing) {
                     finalProxies.push({ ...p, "dialer-proxy": PROXY_GROUPS.FRONT, name: `${p.name} -> 前置` });
@@ -229,7 +240,6 @@ function main(e) {
         const allProxyNames = finalProxies.map(p => p.name);
         u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
 
-        // 🚨 3. 返回对象：包含完整的 DNS 配置
         const config = { 
             proxies: finalProxies,
             "mixed-port": 7890,
@@ -241,7 +251,7 @@ function main(e) {
             "listeners": autoListeners,
             "proxy-groups": u,
             rules: baseRules,
-            dns: buildDnsConfig() // ✅ 集成完整 DNS，全平台通用
+            dns: buildDnsConfig() 
         };
 
         return config;
