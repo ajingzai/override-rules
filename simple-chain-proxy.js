@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (Hy2 强力修复版)
+powerfullz 的 Substore 订阅转换脚本 (全客户端通用 / 内置 DNS 版)
 https://github.com/powerfullz/override-rules
 
-变更说明：
-1. [关键] 增加强力清除指纹逻辑，确保 Hy2/Tuic 协议握手成功。
-2. [排查] 暂时注释掉 TikTok 高级 UDP 阻断规则，防止旧内核不兼容导致断流。
-3. [提醒] 请务必检查系统时间是否同步！
+配置变更：
+1. [DNS] 完美复刻截图配置 (含 fake-ip-filter, DoH, TLS)。
+2. [通用] 无论用什么 Clash 客户端，DNS 逻辑都一致，无需手动设置。
+3. [修复] 保持 Hy2 修复 (移除指纹) 和 TikTok/YouTube 规则。
 */
 
 // ================= 1. 基础工具 =================
@@ -28,7 +28,7 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 (Geosite 懒人版) =================
+// ================= 3. 规则配置 (Geosite 集合版) =================
 const baseRules = [
     // ------------------------------------------------
     // ➤ 0. 必须手动指定的精细策略
@@ -37,7 +37,6 @@ const baseRules = [
     `DOMAIN-SUFFIX,steampipe.akamaized.net,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN,dl.steam.clngaa.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN,dl.steam.ksyna.com,${PROXY_GROUPS.DIRECT}`,
-    
     `DOMAIN-SUFFIX,windowsupdate.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
 
@@ -50,12 +49,8 @@ const baseRules = [
     `GEOSITE,openai,${PROXY_GROUPS.SELECT}`,
 
     // ------------------------------------------------
-    // ➤ 2. TikTok (简化版)
+    // ➤ 2. TikTok
     // ------------------------------------------------
-    // ⚠️ 暂时注释掉高级规则，防止内核不兼容导致 UDP 异常。如果不卡，可以取消注释。
-    // `AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-KEYWORD,tiktok)),REJECT`, 
-    
-    // 使用基础 Geosite 策略
     `GEOSITE,tiktok,${PROXY_GROUPS.SELECT}`, 
 
     // ------------------------------------------------
@@ -95,19 +90,45 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 =================
+// ================= 4. DNS 配置 (完美复刻截图) =================
 function buildDnsConfig() {
     return {
-        enable: true,
-        ipv6: false,
-        "prefer-h3": false, 
+        "enable": true,
+        "listen": ":1053",
+        "ipv6": false,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
-        "listen": ":1053",
-        "use-hosts": true,
-        "default-nameserver": ["223.5.5.5", "119.29.29.29"],
-        nameserver: ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
-        fallback: [] 
+        "fake-ip-filter": [
+            // 截图中的过滤列表
+            "*.lan",
+            "*.local",
+            "time.*.com",
+            "ntp.*.com",
+            "*.market.xiaomi.com",
+            // 补充常见防连环解析域名
+            "+.msftncsi.com",
+            "+.msftconnecttest.com",
+            "+.2.0.198.18.in-addr.arpa"
+        ],
+        // 截图中的 "DNS 服务器域名解析 (default-nameserver)"
+        // 用于解析下面的 DoH 域名，使用阿里 TLS
+        "default-nameserver": [
+            "tls://223.5.5.5",
+            "119.29.29.29" 
+        ],
+        // 截图中的 "默认解析服务器 (nameserver)"
+        // 主力 DNS，使用 DoH
+        "nameserver": [
+            "https://doh.pub/dns-query",
+            "https://dns.alidns.com/dns-query"
+        ],
+        // 代理节点域名解析 (确保 Hy2 节点能被解析)
+        "proxy-server-nameserver": [
+            "https://doh.pub/dns-query",
+            "https://dns.alidns.com/dns-query"
+        ],
+        // 兜底 (Fake-IP 模式下配合 geosite 通常不需要 fallback，留空即可，避免查询慢)
+        "fallback": []
     };
 }
 
@@ -155,10 +176,10 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 (强力修复版) =================
+// ================= 6. 主程序 =================
 function main(e) {
     try {
-        // 🚨【强力修复】不管之前有没有，直接删除全局指纹，防止 Hy2 握手失败
+        // 🚨 1. 强力清除全局指纹 (Hy2 必须)
         if (e['global-client-fingerprint']) {
             delete e['global-client-fingerprint'];
         }
@@ -170,7 +191,7 @@ function main(e) {
 
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
-            // 🚨【强力修复】确保 UDP 属性被开启（部分客户端需要）
+            // 🚨 2. 确保 UDP 开启
             if (!p.udp) p.udp = true;
             
             if (p.name.includes(strictLandingKeyword)) {
@@ -197,7 +218,7 @@ function main(e) {
         const allProxyNames = finalProxies.map(p => p.name);
         u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
 
-        // 构建返回对象，确保没有 global-client-fingerprint
+        // 🚨 3. 返回对象：包含 dns 配置
         const config = { 
             proxies: finalProxies,
             "mixed-port": 7890,
@@ -209,7 +230,7 @@ function main(e) {
             "listeners": autoListeners,
             "proxy-groups": u,
             rules: baseRules,
-            dns: buildDnsConfig()
+            dns: buildDnsConfig() // ✅ 现在 DNS 配置内置在脚本里了，走到哪里都生效
         };
 
         return config;
