@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (精简分组 + 截图对照 DNS 版)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版)
 */
 
 // ================= 1. 基础工具 =================
@@ -67,7 +67,6 @@ function buildDnsConfig() {
         "fake-ip-range": "198.18.0.1/16",
         "ipv6": false,
         "prefer-h3": true,
-        // 真实 IP 回应 (直连解析列表)
         "direct-nameserver-follow-matching": false,
         "nameserver-policy": {
             "+.lan": "223.5.5.5",
@@ -76,21 +75,17 @@ function buildDnsConfig() {
             "ntp.*.com": "223.5.5.5",
             "+.market.xiaomi.com": "223.5.5.5"
         },
-        // DNS 服务器域名解析
         "default-nameserver": [
             "tls://223.5.5.5"
         ],
-        // 代理服务器域名解析 (proxy-server-nameserver)
         "proxy-server-nameserver": [
             "https://doh.pub/dns-query",
             "https://dns.alidns.com/dns-query"
         ],
-        // 默认解析服务器 (nameserver)
         "nameserver": [
             "https://doh.pub/dns-query",
             "https://dns.alidns.com/dns-query"
         ],
-        // 回退过滤设置 (Fallback filter / GeoIP 过滤)
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
@@ -116,7 +111,6 @@ function buildProxyGroups(proxies, landing) {
     // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
-    // 前置/落地组 (仅当 landing 为 true 时有效)
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
@@ -130,7 +124,7 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 04. 手动切换 (替代原有的自动/负载，作为基础节点池)
+    // 04. 手动切换
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: frontProxies.length ? frontProxies : ["DIRECT"] });
     
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
@@ -163,6 +157,22 @@ function main(e) {
 
         if (finalProxies.length === 0) return e; 
 
+        // ============================================
+        // 【新增】为每个节点生成独立的监听端口 (从8000开始)
+        // ============================================
+        const autoListeners = [];
+        let startPort = 8000;
+        finalProxies.forEach(proxy => {
+            autoListeners.push({ 
+                name: `mixed-${startPort}`, 
+                type: "mixed", 
+                address: "0.0.0.0", 
+                port: startPort, 
+                proxy: proxy.name 
+            });
+            startPort++;
+        });
+
         const u = buildProxyGroups(finalProxies, landing);
         const allProxyNames = finalProxies.map(p => p.name);
         u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
@@ -176,6 +186,7 @@ function main(e) {
             "unified-delay": true,
             "tcp-concurrent": true,
             "global-client-fingerprint": "chrome",
+            "listeners": autoListeners, // 这里输出了监听配置
             "proxy-groups": u,
             rules: baseRules,
             dns: buildDnsConfig()
