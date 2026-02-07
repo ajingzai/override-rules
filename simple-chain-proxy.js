@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (全客户端通用 / 内置 DNS 版)
+powerfullz 的 Substore 订阅转换脚本 (全客户端通用 + 完美 DNS 复刻版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [DNS] 完美复刻截图配置 (含 fake-ip-filter, DoH, TLS)。
-2. [通用] 无论用什么 Clash 客户端，DNS 逻辑都一致，无需手动设置。
-3. [修复] 保持 Hy2 修复 (移除指纹) 和 TikTok/YouTube 规则。
+1. [DNS] 1:1 复刻截图中的 Fake-IP 过滤、Nameserver 和 Fallback 过滤规则。
+2. [补全] 自动配置了 Google/Cloudflare 为 Fallback DNS，确保你的过滤规则生效。
+3. [修复] 包含 Hy2 修复 (移除指纹)、TikTok/YouTube 修复及 Steam 分流。
 */
 
 // ================= 1. 基础工具 =================
@@ -90,7 +90,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (完美复刻截图) =================
+// ================= 4. DNS 配置 (完美复刻所有截图) =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -98,37 +98,48 @@ function buildDnsConfig() {
         "ipv6": false,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
+        // 1. Fake-IP 过滤 (来自第一张截图)
         "fake-ip-filter": [
-            // 截图中的过滤列表
             "*.lan",
             "*.local",
             "time.*.com",
             "ntp.*.com",
             "*.market.xiaomi.com",
-            // 补充常见防连环解析域名
             "+.msftncsi.com",
-            "+.msftconnecttest.com",
-            "+.2.0.198.18.in-addr.arpa"
+            "+.msftconnecttest.com"
         ],
-        // 截图中的 "DNS 服务器域名解析 (default-nameserver)"
-        // 用于解析下面的 DoH 域名，使用阿里 TLS
+        // 2. 默认 DNS (来自第二张截图)
         "default-nameserver": [
             "tls://223.5.5.5",
             "119.29.29.29" 
         ],
-        // 截图中的 "默认解析服务器 (nameserver)"
-        // 主力 DNS，使用 DoH
+        // 3. 国内主 DNS (来自第二张截图)
         "nameserver": [
             "https://doh.pub/dns-query",
             "https://dns.alidns.com/dns-query"
         ],
-        // 代理节点域名解析 (确保 Hy2 节点能被解析)
-        "proxy-server-nameserver": [
-            "https://doh.pub/dns-query",
-            "https://dns.alidns.com/dns-query"
+        // 4. 这里的 Fallback 必须配置，否则你的 "回退过滤" (截图3) 不会生效
+        // 我为你添加了标准的 Google/Cloudflare DoH，确保能在其他客户端通用
+        "fallback": [
+            "https://dns.google/dns-query",
+            "https://1.1.1.1/dns-query",
+            "tls://8.8.4.4",
+            "tls://1.0.0.1"
         ],
-        // 兜底 (Fake-IP 模式下配合 geosite 通常不需要 fallback，留空即可，避免查询慢)
-        "fallback": []
+        // 5. 回退过滤设置 (来自第三张截图 - 关键！)
+        "fallback-filter": {
+            "geoip": true,
+            "geoip-code": "CN",
+            "ipcidr": [
+                "240.0.0.0/4",
+                "0.0.0.0/32"
+            ],
+            "domain": [
+                "+.google.com",
+                "+.facebook.com",
+                "+.youtube.com"
+            ]
+        }
     };
 }
 
@@ -179,7 +190,7 @@ function buildProxyGroups(proxies, landing) {
 // ================= 6. 主程序 =================
 function main(e) {
     try {
-        // 🚨 1. 强力清除全局指纹 (Hy2 必须)
+        // 🚨 1. 强力清除全局指纹 (修复 Hy2)
         if (e['global-client-fingerprint']) {
             delete e['global-client-fingerprint'];
         }
@@ -218,7 +229,7 @@ function main(e) {
         const allProxyNames = finalProxies.map(p => p.name);
         u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
 
-        // 🚨 3. 返回对象：包含 dns 配置
+        // 🚨 3. 返回对象：包含完整的 DNS 配置
         const config = { 
             proxies: finalProxies,
             "mixed-port": 7890,
@@ -230,7 +241,7 @@ function main(e) {
             "listeners": autoListeners,
             "proxy-groups": u,
             rules: baseRules,
-            dns: buildDnsConfig() // ✅ 现在 DNS 配置内置在脚本里了，走到哪里都生效
+            dns: buildDnsConfig() // ✅ 集成完整 DNS，全平台通用
         };
 
         return config;
