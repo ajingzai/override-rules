@@ -1,11 +1,11 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (全网常用域名增强版)
+powerfullz 的 Substore 订阅转换脚本 (全量隐形域名增强版)
 https://github.com/powerfullz/override-rules
 
 配置变更：
-1. [扩充] 写入了 50+ 个国内外最常用的顶级域名规则。
-2. [精简] 维持精简分组结构 (流量合并至 "节点选择")。
-3. [修复] 依然包含 TikTok 视频加载修复 (UDP/QUIC 阻断)。
+1. [新增] 补全 twimg, githubusercontent, gravatar 等 20+ 个关键隐形域名。
+2. [保留] YouTube 头像 (ggpht.com) 及 TikTok 视频修复 (QUIC阻断)。
+3. [结构] 保持精简分组，智能分流。
 */
 
 // ================= 1. 基础工具 =================
@@ -28,19 +28,21 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 (海量常用域名版) =================
+// ================= 3. 规则配置 (全量版) =================
 const baseRules = [
     // ------------------------------------------------
     // ➤ 0. 特殊直连 (国内 AI / 直连优先)
     // ------------------------------------------------
-    `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`, // 豆包
-    `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`, // 火山引擎
-    `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`, // DeepSeek
-    `DOMAIN-SUFFIX,moonshot.cn,${PROXY_GROUPS.DIRECT}`, // Kimi
-    `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`, // 所有 .cn 域名
+    `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,moonshot.cn,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
+    `DOMAIN-SUFFIX,amap.com,${PROXY_GROUPS.DIRECT}`, // 高德
+    `DOMAIN-SUFFIX,autonavi.com,${PROXY_GROUPS.DIRECT}`, // 高德
 
     // ------------------------------------------------
-    // ➤ 1. 国际 AI 服务 (合并至 节点选择)
+    // ➤ 1. 国际 AI 服务
     // ------------------------------------------------
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
@@ -58,9 +60,9 @@ const baseRules = [
     `DOMAIN-SUFFIX,notion.site,${PROXY_GROUPS.SELECT}`,
 
     // ------------------------------------------------
-    // ➤ 2. TikTok (特殊修复: 阻断 UDP)
+    // ➤ 2. TikTok (核心修复: 阻断 UDP)
     // ------------------------------------------------
-    `AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-KEYWORD,tiktok)),REJECT`, // 🚫 核心修复
+    `AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-KEYWORD,tiktok)),REJECT`, 
     `DOMAIN-SUFFIX,tiktok.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tiktokv.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,tiktokcdn.com,${PROXY_GROUPS.SELECT}`,
@@ -73,59 +75,92 @@ const baseRules = [
     // ------------------------------------------------
     // ➤ 3. 独立分组 App (Netflix & Telegram)
     // ------------------------------------------------
-    // Netflix
+    // Netflix (包含 CDN)
     `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,netflix.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflximg.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflxvideo.net,${PROXY_GROUPS.NETFLIX}`,
+    `DOMAIN-SUFFIX,nflxso.net,${PROXY_GROUPS.NETFLIX}`, // 新增
+    `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.NETFLIX}`, // 新增
     `DOMAIN-SUFFIX,fast.com,${PROXY_GROUPS.NETFLIX}`,
-    // Telegram (保留 IP 规则防误杀)
+    // Telegram (包含短链和文章页)
     `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
-    `DOMAIN-SUFFIX,tdesktop.com,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,tx.me,${PROXY_GROUPS.TELEGRAM}`,
+    `DOMAIN-SUFFIX,tdesktop.com,${PROXY_GROUPS.TELEGRAM}`,
+    `DOMAIN-SUFFIX,telegra.ph,${PROXY_GROUPS.TELEGRAM}`, // 新增：Telegram文章
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
 
     // ------------------------------------------------
-    // ➤ 4. 国际常用 (视频/社交/搜索) -> 节点选择
+    // ➤ 4. 国际常用 & 隐形域名补全 (重点区域)
     // ------------------------------------------------
-    // YouTube
+    // YouTube & Google 隐形域名
     `DOMAIN-SUFFIX,youtube.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googlevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,ytimg.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ggpht.com,${PROXY_GROUPS.SELECT}`, // 头像
+    `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`, // 视频流
+    `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`, // 视频流
+    `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`, // 视频流
     `DOMAIN-SUFFIX,youtu.be,${PROXY_GROUPS.SELECT}`,
-    // Google
+    `DOMAIN-SUFFIX,1e100.net,${PROXY_GROUPS.SELECT}`, // Google骨干网
+    `DOMAIN-SUFFIX,xn--ngstr-lra8j.com,${PROXY_GROUPS.SELECT}`, // Google Play
     `DOMAIN-SUFFIX,google.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gstatic.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleusercontent.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gmail.com,${PROXY_GROUPS.SELECT}`,
-    // Social (Twitter/X/Meta)
+    `DOMAIN-SUFFIX,recaptcha.net,${PROXY_GROUPS.SELECT}`, // 验证码
+    `DOMAIN-SUFFIX,android.com,${PROXY_GROUPS.SELECT}`, 
+    `DOMAIN-SUFFIX,app-measurement.com,${PROXY_GROUPS.SELECT}`, // App统计(防卡顿)
+
+    // Twitter/X 隐形域名
     `DOMAIN-SUFFIX,twitter.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,x.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,t.co,${PROXY_GROUPS.SELECT}`, // 短链
+    `DOMAIN-SUFFIX,twimg.com,${PROXY_GROUPS.SELECT}`, // 🚨 必须：推特图片CDN
+
+    // Facebook/Meta 隐形域名
     `DOMAIN-SUFFIX,facebook.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,fbcdn.net,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,fbcdn.net,${PROXY_GROUPS.SELECT}`, // 🚨 必须：FB图片CDN
+    `DOMAIN-SUFFIX,fbsbx.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,instagram.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,cdninstagram.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,cdninstagram.com,${PROXY_GROUPS.SELECT}`, // Ins图片
     `DOMAIN-SUFFIX,whatsapp.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,whatsapp.net,${PROXY_GROUPS.SELECT}`,
-    // Streaming & Other
+
+    // Github 隐形域名
+    `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,github.io,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`, // 🚨 必须：Raw文件/图片
+    `DOMAIN-SUFFIX,githubassets.com,${PROXY_GROUPS.SELECT}`, // 静态资源
+
+    // 开发者 & 常用工具
+    `DOMAIN-SUFFIX,gravatar.com,${PROXY_GROUPS.SELECT}`, // 🚨 全网通用头像
+    `DOMAIN-SUFFIX,imgur.com,${PROXY_GROUPS.SELECT}`, // 🚨 常用图床
+    `DOMAIN-SUFFIX,vimeo.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,vimeocdn.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,stackoverflow.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,medium.com,${PROXY_GROUPS.SELECT}`,
+    
+    // 娱乐 & 其他
     `DOMAIN-SUFFIX,spotify.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,spotifycdn.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,scdn.co,${PROXY_GROUPS.SELECT}`, // Spotify图片
     `DOMAIN-SUFFIX,twitch.tv,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,ttvnw.net,${PROXY_GROUPS.SELECT}`, // Twitch视频流
+    `DOMAIN-SUFFIX,jtvnw.net,${PROXY_GROUPS.SELECT}`, // Twitch资源
     `DOMAIN-SUFFIX,hbo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,disneyplus.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,primevideo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,reddit.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,redd.it,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,redd.it,${PROXY_GROUPS.SELECT}`, // Reddit媒体
     `DOMAIN-SUFFIX,discord.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,discord.gg,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discordapp.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,discordapp.net,${PROXY_GROUPS.SELECT}`, // Discord媒体
     `DOMAIN-SUFFIX,wikipedia.org,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
-    `DOMAIN-SUFFIX,githubusercontent.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,duckduckgo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,yahoo.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,amazon.com,${PROXY_GROUPS.SELECT}`,
@@ -133,13 +168,13 @@ const baseRules = [
     `DOMAIN-SUFFIX,dropbox.com,${PROXY_GROUPS.SELECT}`,
 
     // ------------------------------------------------
-    // ➤ 5. 国内常用 (巨头直连) -> 全球直连
+    // ➤ 5. 国内常用 (巨头直连)
     // ------------------------------------------------
     // Bilibili
     `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,bilivideo.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,hdslb.com,${PROXY_GROUPS.DIRECT}`,
-    // Alibaba (淘宝/天猫/阿里云)
+    // Alibaba
     `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,tmall.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,jd.com,${PROXY_GROUPS.DIRECT}`,
@@ -148,24 +183,24 @@ const baseRules = [
     `DOMAIN-SUFFIX,alicdn.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,alipay.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,aliyun.com,${PROXY_GROUPS.DIRECT}`,
-    // Tencent (腾讯/微信)
+    // Tencent
     `DOMAIN-SUFFIX,qq.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,tencent.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,weixin.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,wechat.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,gtimg.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,qpic.cn,${PROXY_GROUPS.DIRECT}`,
-    // ByteDance CN (抖音/头条)
+    // ByteDance CN
     `DOMAIN-SUFFIX,douyin.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,snssdk.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,pstatp.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,toutiao.com,${PROXY_GROUPS.DIRECT}`,
-    // NetEase (网易)
+    // NetEase
     `DOMAIN-SUFFIX,163.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,126.net,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,127.net,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,netease.com,${PROXY_GROUPS.DIRECT}`,
-    // Other CN Giants
+    // Other CN
     `DOMAIN-SUFFIX,baidu.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,bdstatic.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,zhihu.com,${PROXY_GROUPS.DIRECT}`,
@@ -189,7 +224,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,youku.com,${PROXY_GROUPS.DIRECT}`,
 
     // ------------------------------------------------
-    // ➤ 6. Apple / Microsoft (默认直连，加速国内访问)
+    // ➤ 6. Apple / Microsoft
     // ------------------------------------------------
     `DOMAIN-SUFFIX,apple.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,icloud.com,${PROXY_GROUPS.DIRECT}`,
@@ -202,7 +237,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.DIRECT}`,
 
     // ------------------------------------------------
-    // ➤ 7. 兜底策略
+    // ➤ 7. 兜底
     // ------------------------------------------------
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
@@ -214,7 +249,7 @@ function buildDnsConfig() {
     return {
         enable: true,
         ipv6: false,
-        "prefer-h3": false, // 保持 false 以修复 TikTok
+        "prefer-h3": false, // 保持 false
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "listen": ":1053",
@@ -225,7 +260,7 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (精简版) =================
+// ================= 5. 策略组生成 =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     if (!proxies || proxies.length === 0) return [];
@@ -234,18 +269,16 @@ function buildProxyGroups(proxies, landing) {
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 主选择列表
     const mainProxies = landing 
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
     
-    // 子功能列表
     const subProxies = [PROXY_GROUPS.AUTO, PROXY_GROUPS.SELECT, ...frontProxies];
 
-    // --- 01. 节点选择 ---
+    // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
-    // --- 02. 前置代理 ---
+    // 02. 前置代理
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.FRONT,
@@ -254,7 +287,7 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // --- 03. 落地节点 ---
+    // 03. 落地节点
     if (landing) {
         groups.push({
             name: PROXY_GROUPS.LANDING,
@@ -263,10 +296,10 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // --- 04. 手动切换 ---
+    // 04. 手动切换
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: [PROXY_GROUPS.AUTO, ...frontProxies] });
 
-    // --- 05. 自动选择 ---
+    // 05. 自动选择
     groups.push({ 
         name: PROXY_GROUPS.AUTO, 
         type: "url-test", 
@@ -275,21 +308,13 @@ function buildProxyGroups(proxies, landing) {
         tolerance: 50 
     });
 
-    // --- 06+. 剩余 App 独立分组 (仅保留 Netflix 和 Telegram) ---
-    const customGroups = [
-        PROXY_GROUPS.NETFLIX,
-        PROXY_GROUPS.TELEGRAM
-    ];
-
+    // 06+. 独立 App (Netflix/Telegram)
+    const customGroups = [PROXY_GROUPS.NETFLIX, PROXY_GROUPS.TELEGRAM];
     customGroups.forEach(groupName => {
-        groups.push({
-            name: groupName,
-            type: "select",
-            proxies: subProxies
-        });
+        groups.push({ name: groupName, type: "select", proxies: subProxies });
     });
 
-    // --- 末尾分组 ---
+    // 末尾
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
 
