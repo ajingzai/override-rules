@@ -1,10 +1,10 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (Modified v4 - Hard Filter)
+powerfullz 的 Substore 订阅转换脚本 (Modified v5 - Chain Proxy)
 优化内容：
 1. 自动剔除官网、邮箱、异常提示等无用节点
 2. 纯落地节点自动重命名添加“自建”后缀
-3. 【强制隔离修复】：在 JS 层面生成非落地节点白名单，强制赋予手动和前置分组，
-   彻底解决正则 exclude-filter 失效导致落地节点出现在前置代理的问题。
+3. 【链式代理】：筛选出的落地节点自动添加 dialer-proxy: "前置代理"
+4. 严格隔离：非落地组严格排除落地节点，防止循环引用
 */
 
 // ==================== 工具函数 ====================
@@ -260,7 +260,6 @@ function buildProxyGroups({ landing: e, countries: t, countryProxyGroups: o, low
     e ? {
         name: "前置代理",
         icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Area.png",
-        type: "select",
         // 【关键修复】：同上，直接传入白名单数组
         type: "select",
         proxies: whitelist
@@ -398,7 +397,7 @@ function main(e) {
     const excludePattern = /官网|邮箱|订阅|更新|到期|重置|异常|流量|频道|群组|联系|网址/i;
     rawProxies = rawProxies.filter(p => !excludePattern.test(p.name));
 
-    // 2. 处理落地节点命名（加“自建”）
+    // 2. 处理落地节点命名（加“自建”）并 【绑定链式代理】
     const landingPattern = /落地/;
     const residentialPattern = /家宽|家庭|商宽|商业|星链/;
     
@@ -407,6 +406,8 @@ function main(e) {
             if (!p.name.includes("自建")) {
                 p.name = p.name + "自建";
             }
+            // 【关键修改】：强制指定该节点的前置代理
+            p["dialer-proxy"] = "前置代理";
         }
     });
 
