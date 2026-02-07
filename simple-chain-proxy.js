@@ -1,12 +1,13 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (零干扰兼容版)
+powerfullz 的 Substore 订阅转换脚本 (智能分诊修复版)
 https://github.com/powerfullz/override-rules
 
-配置变更：
-1. [回滚] 停止对单个节点指纹 (fingerprint) 的增删改，尊重机场原始配置。
-2. [回滚] 停止强制 skip-cert-verify，防止 Reality 节点验证失败。
-3. [保留] 仅删除 "全局" 指纹，解决 Hy2/Tuic 协议冲突。
-4. [保留] 完美 DNS 配置 + TikTok/YouTube 规则 + 分组策略。
+🛠 修复逻辑升级：
+1. [智能诊断] 区分 Reality 和普通 TLS 节点，分别施策。
+2. [Reality] 缺失指纹时自动补全 chrome，防止握手失败。
+3. [TLS/Trojan] 自动补全 SNI 并跳过证书验证，救活"全红"节点。
+4. [Hysteria2] 保持无指纹纯净模式。
+5. [DNS] 保持你指定的完美 DNS 配置。
 */
 
 // ================= 1. 基础工具 =================
@@ -29,7 +30,7 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL" 
 };
 
-// ================= 3. 规则配置 (Geosite 集合版) =================
+// ================= 3. 规则配置 =================
 const baseRules = [
     // 0. 精细策略
     `DOMAIN-SUFFIX,steamcontent.com,${PROXY_GROUPS.DIRECT}`,
@@ -77,7 +78,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (完美复刻版) =================
+// ================= 4. DNS 配置 (完美复刻) =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -122,8 +123,7 @@ function buildProxyGroups(proxies, landing) {
     const mainProxies = landing 
         ? [PROXY_GROUPS.AUTO, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, PROXY_GROUPS.MANUAL, "DIRECT"]
         : [PROXY_GROUPS.AUTO, PROXY_GROUPS.MANUAL, "DIRECT"];
-    const subProxies = [PROXY_GROUPS.AUTO, PROXY_GROUPS.SELECT, ...frontProxies];
-
+    
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
     if (landing) {
         groups.push({ name: PROXY_GROUPS.FRONT, type: "select", proxies: [PROXY_GROUPS.AUTO, ...frontProxies] });
@@ -133,6 +133,7 @@ function buildProxyGroups(proxies, landing) {
     groups.push({ name: PROXY_GROUPS.AUTO, type: "url-test", proxies: frontProxies.length ? frontProxies : ["DIRECT"], interval: 300, tolerance: 50 });
     
     [PROXY_GROUPS.NETFLIX, PROXY_GROUPS.TELEGRAM].forEach(groupName => {
+        const subProxies = [PROXY_GROUPS.AUTO, PROXY_GROUPS.SELECT, ...frontProxies];
         groups.push({ name: groupName, type: "select", proxies: subProxies });
     });
 
@@ -141,11 +142,10 @@ function buildProxyGroups(proxies, landing) {
     return groups;
 }
 
-// ================= 6. 主程序 (零干扰兼容版) =================
+// ================= 6. 主程序 (智能诊断修复) =================
 function main(e) {
     try {
-        // 🚨 1. 全局清理：这是唯一必须删除的全局设置
-        // 删掉它解决了 Hy2/Tuic 的大面积冲突
+        // 1. 删除全局指纹 (Hy2 必须)
         if (e['global-client-fingerprint']) delete e['global-client-fingerprint'];
 
         let rawProxies = e.proxies || [];
@@ -156,25 +156,35 @@ function main(e) {
         rawProxies.forEach(p => {
             if (excludeKeywords.test(p.name)) return;
 
-            // ================== 🛡️ 保守修复策略 START ==================
-            // 2. 基础补全：只做最安全的修改
+            // ================== 🏥 智能诊断科 START ==================
+            // A. 通用体检
             if (p.udp === undefined) p.udp = true; 
-            if (p.tfo !== undefined) p.tfo = false; // 关闭 TFO 通常更稳定
+            if (p.tfo !== undefined) p.tfo = false; // 关闭TFO保平安
 
-            // 3. SNI 补全：这步很关键，防止 Clash Meta 读不出 host
-            // 如果只有 host 没有 servername，就复制一份
+            // B. SNI 补全 (Clash Meta 找不到 ServerName 就无法 TLS 握手)
             if (!p.servername) {
                 if (p.sni) p.servername = p.sni;
                 else if (p.host) p.servername = p.host;
-                else if (p['ws-opts'] && p['ws-opts'].headers && p['ws-opts'].headers.Host) {
-                    p.servername = p['ws-opts'].headers.Host;
-                }
+                else if (p['ws-opts']?.headers?.Host) p.servername = p['ws-opts'].headers.Host;
             }
+
+            // C. 对症下药
+            if (p.type === 'hysteria2') {
+                // 病症：Hy2 怕指纹
+                // 处方：删除指纹
+                if (p['client-fingerprint']) delete p['client-fingerprint'];
             
-            // 🛑 4. 关键：彻底停止对指纹 (client-fingerprint) 和证书 (skip-cert-verify) 的干预！
-            // 之前的脚本在这里做了太多的 "自作聪明" 的修改，导致部分机场节点验证失败。
-            // 现在完全保留订阅原样的设置。
-            // ================== 🛡️ 保守修复策略 END ==================
+            } else if (p['reality-opts'] || p.realityOpts) {
+                // 病症：Reality 必须有指纹，且不能随意跳过证书
+                // 处方：缺指纹就补 chrome，不要动 skip-cert-verify
+                if (!p['client-fingerprint']) p['client-fingerprint'] = 'chrome';
+            
+            } else if (p.tls) {
+                // 病症：普通 TLS (Vless/Trojan/VMess) 经常遇到自签名证书或 SNI 错乱
+                // 处方：强制跳过证书验证，这是救活垃圾机场的神药
+                if (p['skip-cert-verify'] === undefined) p['skip-cert-verify'] = true;
+            }
+            // ================== 🏥 智能诊断科 END ==================
 
             if (p.name.includes(strictLandingKeyword)) {
                 if (landing) {
