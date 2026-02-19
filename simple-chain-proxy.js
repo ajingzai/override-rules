@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 地区分组排序 + 微软AI代理)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 地区分组排序 + 微软AI代理 + 前置代理嵌套)
 */
 
 // ================= 1. 基础工具 =================
@@ -50,7 +50,7 @@ const baseRules = [
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     
-    // 【新增】微软 AI (Copilot/Bing Chat) 走代理
+    // 微软 AI (Copilot/Bing Chat) 走代理
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bingapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,copilot.microsoft.com,${PROXY_GROUPS.SELECT}`,
@@ -72,7 +72,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,apple.com,${PROXY_GROUPS.DIRECT}`,
     
-    // 微软通用服务保持直连 (因为 AI 规则在上面，所以不会冲突)
+    // 微软通用服务保持直连
     `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
     
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
@@ -117,7 +117,7 @@ function buildDnsConfig() {
     };
 }
 
-// ================= 5. 策略组生成 (精简版) =================
+// ================= 5. 策略组生成 =================
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     if (!proxies || proxies.length === 0) return [];
@@ -140,10 +140,18 @@ function buildProxyGroups(proxies, landing) {
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
+        // 【新增嵌套】把地区组放进前置代理的最前面
+        const frontOptions = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US];
+        if (frontProxies.length > 0) {
+            frontOptions.push(...frontProxies);
+        } else {
+            frontOptions.push("DIRECT");
+        }
+
         groups.push({
             name: PROXY_GROUPS.FRONT,
             type: "select",
-            proxies: frontProxies.length ? frontProxies : ["DIRECT"] 
+            proxies: frontOptions 
         });
         groups.push({
             name: PROXY_GROUPS.LANDING,
@@ -158,7 +166,7 @@ function buildProxyGroups(proxies, landing) {
     // 05. 电报消息
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
 
-    // 【调整位置】将香港、日本、美国分组放在电报消息之后
+    // 06, 07, 08 地区分组
     groups.push({ name: PROXY_GROUPS.HK, type: "select", proxies: hkProxies.length ? hkProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.JP, type: "select", proxies: jpProxies.length ? jpProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.US, type: "select", proxies: usProxies.length ? usProxies : ["DIRECT"] });
