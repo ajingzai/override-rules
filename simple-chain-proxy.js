@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 地区分组排序 + 微软AI代理 + 前置代理嵌套)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 地区分组排序 + 微软AI代理 + 01/02/04嵌套)
 */
 
 // ================= 1. 基础工具 =================
@@ -131,28 +131,33 @@ function buildProxyGroups(proxies, landing) {
     const jpProxies = proxyNames.filter(n => /日|JP|Japan/i.test(n) && !n.includes("落地"));
     const usProxies = proxyNames.filter(n => /美|US|United States|America/i.test(n) && !n.includes("落地"));
 
-    // 将新增的地区分组放入主策略中供选择
+    // 定义地区分组的集合，方便后面插入
+    const regionGroups = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US];
+
+    // 将地区分组放入 01.节点选择
     const mainProxies = landing 
-        ? [PROXY_GROUPS.MANUAL, PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
-        : [PROXY_GROUPS.MANUAL, PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, "DIRECT"];
+        ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
+        : [PROXY_GROUPS.MANUAL, ...regionGroups, "DIRECT"];
+
+    // 组合 02.前置代理 和 04.手动切换 的选项（包含地区分组 + 所有非落地节点）
+    const manualAndFrontOptions = [...regionGroups];
+    if (frontProxies.length > 0) {
+        manualAndFrontOptions.push(...frontProxies);
+    } else {
+        manualAndFrontOptions.push("DIRECT");
+    }
 
     // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
-        // 【新增嵌套】把地区组放进前置代理的最前面
-        const frontOptions = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US];
-        if (frontProxies.length > 0) {
-            frontOptions.push(...frontProxies);
-        } else {
-            frontOptions.push("DIRECT");
-        }
-
+        // 02. 前置代理 (嵌入地区分组)
         groups.push({
             name: PROXY_GROUPS.FRONT,
             type: "select",
-            proxies: frontOptions 
+            proxies: manualAndFrontOptions 
         });
+        // 03. 落地节点
         groups.push({
             name: PROXY_GROUPS.LANDING,
             type: "select",
@@ -160,8 +165,8 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 04. 手动切换
-    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: frontProxies.length ? frontProxies : ["DIRECT"] });
+    // 04. 手动切换 (嵌入地区分组)
+    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualAndFrontOptions });
     
     // 05. 电报消息
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
