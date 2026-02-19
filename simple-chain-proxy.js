@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 地区分组排序 + 微软AI代理 + 01/02/04嵌套)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置)
 */
 
 // ================= 1. 基础工具 =================
@@ -8,18 +8,19 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 =================
+// ================= 2. 核心组名定义 (调整落地节点为 03，地区分组顺延) =================
 const PROXY_GROUPS = {
     SELECT:   "01. 节点选择",
     FRONT:    "02. 前置代理",
     LANDING:  "03. 落地节点",
-    MANUAL:   "04. 手动切换",
-    TELEGRAM: "05. 电报消息",
-    HK:       "06. 香港节点",
-    JP:       "07. 日本节点",
-    US:       "08. 美国节点",
-    MATCH:    "09. 漏网之鱼",
-    DIRECT:   "10. 全球直连",
+    HK:       "04. 香港节点",
+    JP:       "05. 日本节点",
+    US:       "06. 美国节点",
+    TW:       "07. 台湾节点",
+    MANUAL:   "08. 手动切换",
+    TELEGRAM: "09. 电报消息",
+    MATCH:    "10. 漏网之鱼",
+    DIRECT:   "11. 全球直连",
     GLOBAL:   "GLOBAL" 
 };
 
@@ -130,34 +131,38 @@ function buildProxyGroups(proxies, landing) {
     const hkProxies = proxyNames.filter(n => /港|HK|Hong/i.test(n) && !n.includes("落地"));
     const jpProxies = proxyNames.filter(n => /日|JP|Japan/i.test(n) && !n.includes("落地"));
     const usProxies = proxyNames.filter(n => /美|US|United States|America/i.test(n) && !n.includes("落地"));
+    const twProxies = proxyNames.filter(n => /台|TW|Taiwan/i.test(n) && !n.includes("落地"));
 
-    // 定义地区分组的集合，方便后面插入
-    const regionGroups = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US];
+    // 定义 4 个地区分组的集合
+    const regionGroups = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, PROXY_GROUPS.TW];
 
-    // 将地区分组放入 01.节点选择
+    // 01. 节点选择 的可选项
     const mainProxies = landing 
         ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.MANUAL, ...regionGroups, "DIRECT"];
 
-    // 组合 02.前置代理 和 04.手动切换 的选项（包含地区分组 + 所有非落地节点）
-    const manualAndFrontOptions = [...regionGroups];
+    // 组合 手动切换 的选项（包含 4个地区分组 + 所有非落地节点）
+    const manualOptions = [...regionGroups];
     if (frontProxies.length > 0) {
-        manualAndFrontOptions.push(...frontProxies);
+        manualOptions.push(...frontProxies);
     } else {
-        manualAndFrontOptions.push("DIRECT");
+        manualOptions.push("DIRECT");
     }
 
+    // --- 开始按顺序向配置写入策略组 ---
+    
     // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
-        // 02. 前置代理 (嵌入地区分组)
+        // 02. 前置代理 (【严格限制】只能选择这四个国家/地区的分组)
         groups.push({
             name: PROXY_GROUPS.FRONT,
             type: "select",
-            proxies: manualAndFrontOptions 
+            proxies: regionGroups.length ? regionGroups : ["DIRECT"]
         });
-        // 03. 落地节点
+        
+        // 03. 落地节点 (移到了这里)
         groups.push({
             name: PROXY_GROUPS.LANDING,
             type: "select",
@@ -165,18 +170,19 @@ function buildProxyGroups(proxies, landing) {
         });
     }
 
-    // 04. 手动切换 (嵌入地区分组)
-    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualAndFrontOptions });
-    
-    // 05. 电报消息
-    groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
-
-    // 06, 07, 08 地区分组
+    // 04, 05, 06, 07 地区分组
     groups.push({ name: PROXY_GROUPS.HK, type: "select", proxies: hkProxies.length ? hkProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.JP, type: "select", proxies: jpProxies.length ? jpProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.US, type: "select", proxies: usProxies.length ? usProxies : ["DIRECT"] });
+    groups.push({ name: PROXY_GROUPS.TW, type: "select", proxies: twProxies.length ? twProxies : ["DIRECT"] });
 
-    // 09. 漏网之鱼 & 10. 全球直连
+    // 08. 手动切换 (包含地区组和非落地节点)
+    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualOptions });
+    
+    // 09. 电报消息
+    groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
+
+    // 10. 漏网之鱼 & 11. 全球直连
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
 
