@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 地区分组排序 + 微软AI代理)
 */
 
 // ================= 1. 基础工具 =================
@@ -15,14 +15,27 @@ const PROXY_GROUPS = {
     LANDING:  "03. 落地节点",
     MANUAL:   "04. 手动切换",
     TELEGRAM: "05. 电报消息",
-    MATCH:    "06. 漏网之鱼",
-    DIRECT:   "07. 全球直连",
+    HK:       "06. 香港节点",
+    JP:       "07. 日本节点",
+    US:       "08. 美国节点",
+    MATCH:    "09. 漏网之鱼",
+    DIRECT:   "10. 全球直连",
     GLOBAL:   "GLOBAL" 
 };
 
 // ================= 3. 规则配置 =================
 const baseRules = [
-    "AND,((DST-PORT,443),(NETWORK,UDP)),REJECT", 
+    // 【修复1】修正拦截 QUIC (UDP 443) 的语法，强制 Google Play 走 TCP 下载
+    "AND,(DST-PORT,443),(NETWORK,udp),REJECT", 
+    
+    // 【修复2】补充 Google Play 下载专用域名，必须放在 .cn 规则之前！
+    `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
+    `DOMAIN-KEYWORD,xn--ngstr-lra8j,${PROXY_GROUPS.SELECT}`,
+
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,yiyan.baidu.com,${PROXY_GROUPS.DIRECT}`,
@@ -36,6 +49,12 @@ const baseRules = [
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
+    
+    // 【新增】微软 AI (Copilot/Bing Chat) 走代理
+    `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,bingapis.com,${PROXY_GROUPS.SELECT}`,
+    `DOMAIN-SUFFIX,copilot.microsoft.com,${PROXY_GROUPS.SELECT}`,
+
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,anthropic.com,${PROXY_GROUPS.SELECT}`,
@@ -52,7 +71,10 @@ const baseRules = [
     `DOMAIN-SUFFIX,weixin.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,apple.com,${PROXY_GROUPS.DIRECT}`,
+    
+    // 微软通用服务保持直连 (因为 AI 规则在上面，所以不会冲突)
     `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
+    
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,PRIVATE,${PROXY_GROUPS.DIRECT}`,
@@ -104,9 +126,15 @@ function buildProxyGroups(proxies, landing) {
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
+    // 筛选地区节点，同时排除名称中带有“落地”的节点
+    const hkProxies = proxyNames.filter(n => /港|HK|Hong/i.test(n) && !n.includes("落地"));
+    const jpProxies = proxyNames.filter(n => /日|JP|Japan/i.test(n) && !n.includes("落地"));
+    const usProxies = proxyNames.filter(n => /美|US|United States|America/i.test(n) && !n.includes("落地"));
+
+    // 将新增的地区分组放入主策略中供选择
     const mainProxies = landing 
-        ? [PROXY_GROUPS.MANUAL, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
-        : [PROXY_GROUPS.MANUAL, "DIRECT"];
+        ? [PROXY_GROUPS.MANUAL, PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
+        : [PROXY_GROUPS.MANUAL, PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, "DIRECT"];
 
     // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
@@ -127,7 +155,15 @@ function buildProxyGroups(proxies, landing) {
     // 04. 手动切换
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: frontProxies.length ? frontProxies : ["DIRECT"] });
     
+    // 05. 电报消息
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
+
+    // 【调整位置】将香港、日本、美国分组放在电报消息之后
+    groups.push({ name: PROXY_GROUPS.HK, type: "select", proxies: hkProxies.length ? hkProxies : ["DIRECT"] });
+    groups.push({ name: PROXY_GROUPS.JP, type: "select", proxies: jpProxies.length ? jpProxies : ["DIRECT"] });
+    groups.push({ name: PROXY_GROUPS.US, type: "select", proxies: usProxies.length ? usProxies : ["DIRECT"] });
+
+    // 09. 漏网之鱼 & 10. 全球直连
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
 
@@ -158,7 +194,7 @@ function main(e) {
         if (finalProxies.length === 0) return e; 
 
         // ============================================
-        // 【新增】为每个节点生成独立的监听端口 (从8000开始)
+        // 为每个节点生成独立的监听端口 (从8000开始)
         // ============================================
         const autoListeners = [];
         let startPort = 8000;
@@ -186,7 +222,7 @@ function main(e) {
             "unified-delay": true,
             "tcp-concurrent": true,
             "global-client-fingerprint": "chrome",
-            "listeners": autoListeners, // 这里输出了监听配置
+            "listeners": autoListeners, 
             "proxy-groups": u,
             rules: baseRules,
             dns: buildDnsConfig()
