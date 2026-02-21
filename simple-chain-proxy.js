@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞分组)
 */
 
 // ================= 1. 基础工具 =================
@@ -8,7 +8,7 @@ const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
 const landing = parseBool(rawArgs.landing); 
 const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
 
-// ================= 2. 核心组名定义 (调整落地节点为 03，地区分组顺延) =================
+// ================= 2. 核心组名定义 =================
 const PROXY_GROUPS = {
     SELECT:   "01. 节点选择",
     FRONT:    "02. 前置代理",
@@ -19,6 +19,7 @@ const PROXY_GROUPS = {
     TW:       "07. 台湾节点",
     MANUAL:   "08. 手动切换",
     TELEGRAM: "09. 电报消息",
+    NETFLIX:  "12. 奈飞视频", // 新增奈飞组
     MATCH:    "10. 漏网之鱼",
     DIRECT:   "11. 全球直连",
     GLOBAL:   "GLOBAL" 
@@ -26,16 +27,22 @@ const PROXY_GROUPS = {
 
 // ================= 3. 规则配置 =================
 const baseRules = [
-    // 【修复1】修正拦截 QUIC (UDP 443) 的语法，强制 Google Play 走 TCP 下载
     "AND,(DST-PORT,443),(NETWORK,udp),REJECT", 
     
-    // 【修复2】补充 Google Play 下载专用域名，必须放在 .cn 规则之前！
     `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-KEYWORD,xn--ngstr-lra8j,${PROXY_GROUPS.SELECT}`,
+
+    // 奈飞规则
+    `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.NETFLIX}`,
+    `DOMAIN-SUFFIX,netflix.net,${PROXY_GROUPS.NETFLIX}`,
+    `DOMAIN-SUFFIX,nflximg.net,${PROXY_GROUPS.NETFLIX}`,
+    `DOMAIN-SUFFIX,nflxvideo.net,${PROXY_GROUPS.NETFLIX}`,
+    `DOMAIN-SUFFIX,nflxso.net,${PROXY_GROUPS.NETFLIX}`,
+    `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.NETFLIX}`,
 
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
@@ -51,7 +58,6 @@ const baseRules = [
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     
-    // 微软 AI (Copilot/Bing Chat) 走代理
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bingapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,copilot.microsoft.com,${PROXY_GROUPS.SELECT}`,
@@ -72,8 +78,6 @@ const baseRules = [
     `DOMAIN-SUFFIX,weixin.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,apple.com,${PROXY_GROUPS.DIRECT}`,
-    
-    // 微软通用服务保持直连
     `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
     
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
@@ -82,7 +86,7 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (完全参照截图) =================
+// ================= 4. DNS 配置 =================
 function buildDnsConfig() {
     return {
         "enable": true,
@@ -98,17 +102,9 @@ function buildDnsConfig() {
             "ntp.*.com": "223.5.5.5",
             "+.market.xiaomi.com": "223.5.5.5"
         },
-        "default-nameserver": [
-            "tls://223.5.5.5"
-        ],
-        "proxy-server-nameserver": [
-            "https://doh.pub/dns-query",
-            "https://dns.alidns.com/dns-query"
-        ],
-        "nameserver": [
-            "https://doh.pub/dns-query",
-            "https://dns.alidns.com/dns-query"
-        ],
+        "default-nameserver": ["tls://223.5.5.5"],
+        "proxy-server-nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
+        "nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
         "fallback-filter": {
             "geoip": true,
             "geoip-code": "CN",
@@ -127,60 +123,41 @@ function buildProxyGroups(proxies, landing) {
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
-    // 筛选地区节点，同时排除名称中带有“落地”的节点
     const hkProxies = proxyNames.filter(n => /港|HK|Hong/i.test(n) && !n.includes("落地"));
     const jpProxies = proxyNames.filter(n => /日|JP|Japan/i.test(n) && !n.includes("落地"));
     const usProxies = proxyNames.filter(n => /美|US|United States|America/i.test(n) && !n.includes("落地"));
     const twProxies = proxyNames.filter(n => /台|TW|Taiwan/i.test(n) && !n.includes("落地"));
 
-    // 定义 4 个地区分组的集合
     const regionGroups = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, PROXY_GROUPS.TW];
-
-    // 01. 节点选择 的可选项
     const mainProxies = landing 
         ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.MANUAL, ...regionGroups, "DIRECT"];
 
-    // 组合 手动切换 的选项（包含 4个地区分组 + 所有非落地节点）
-    const manualOptions = [...regionGroups];
-    if (frontProxies.length > 0) {
-        manualOptions.push(...frontProxies);
-    } else {
-        manualOptions.push("DIRECT");
-    }
+    // 组合 手动切换/奈飞 的选项（排除落地节点）
+    const cleanOptions = [...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])];
 
-    // --- 开始按顺序向配置写入策略组 ---
-    
     // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
-        // 02. 前置代理 (【严格限制】只能选择这四个国家/地区的分组)
-        groups.push({
-            name: PROXY_GROUPS.FRONT,
-            type: "select",
-            proxies: regionGroups.length ? regionGroups : ["DIRECT"]
-        });
-        
-        // 03. 落地节点 (移到了这里)
-        groups.push({
-            name: PROXY_GROUPS.LANDING,
-            type: "select",
-            proxies: landingProxies.length ? landingProxies : ["DIRECT"]
-        });
+        groups.push({ name: PROXY_GROUPS.FRONT, type: "select", proxies: regionGroups.length ? regionGroups : ["DIRECT"] });
+        groups.push({ name: PROXY_GROUPS.LANDING, type: "select", proxies: landingProxies.length ? landingProxies : ["DIRECT"] });
     }
 
-    // 04, 05, 06, 07 地区分组
+    // 04-07 地区分组
     groups.push({ name: PROXY_GROUPS.HK, type: "select", proxies: hkProxies.length ? hkProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.JP, type: "select", proxies: jpProxies.length ? jpProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.US, type: "select", proxies: usProxies.length ? usProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.TW, type: "select", proxies: twProxies.length ? twProxies : ["DIRECT"] });
 
-    // 08. 手动切换 (包含地区组和非落地节点)
-    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualOptions });
+    // 08. 手动切换
+    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: cleanOptions });
     
     // 09. 电报消息
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
+
+    // 12. 奈飞视频 (放在电报下面，排除落地节点)
+    groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: cleanOptions });
 
     // 10. 漏网之鱼 & 11. 全球直连
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
@@ -212,9 +189,6 @@ function main(e) {
 
         if (finalProxies.length === 0) return e; 
 
-        // ============================================
-        // 为每个节点生成独立的监听端口 (从8000开始)
-        // ============================================
         const autoListeners = [];
         let startPort = 8000;
         finalProxies.forEach(proxy => {
