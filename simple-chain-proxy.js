@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞 & TikTok 分组)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞 & TikTok 包含落地版)
 */
 
 // ================= 1. 基础工具 =================
@@ -20,7 +20,7 @@ const PROXY_GROUPS = {
     MANUAL:   "08. 手动切换",
     TELEGRAM: "09. 电报消息",
     NETFLIX:  "12. 奈飞视频",
-    TIKTOK:   "13. TikTok",   // 新增 TikTok 组
+    TIKTOK:   "13. TikTok",
     MATCH:    "10. 漏网之鱼",
     DIRECT:   "11. 全球直连",
     GLOBAL:   "GLOBAL" 
@@ -28,10 +28,8 @@ const PROXY_GROUPS = {
 
 // ================= 3. 规则配置 =================
 const baseRules = [
-    // 拦截 QUIC
     "AND,(DST-PORT,443),(NETWORK,udp),REJECT", 
     
-    // Google Play
     `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`,
@@ -39,7 +37,6 @@ const baseRules = [
     `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-KEYWORD,xn--ngstr-lra8j,${PROXY_GROUPS.SELECT}`,
 
-    // TikTok 规则
     `DOMAIN-KEYWORD,tiktok,${PROXY_GROUPS.TIKTOK}`,
     `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.TIKTOK}`,
     `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.TIKTOK}`,
@@ -47,7 +44,6 @@ const baseRules = [
     `DOMAIN-SUFFIX,muscdn.com,${PROXY_GROUPS.TIKTOK}`,
     `DOMAIN-SUFFIX,musical.ly,${PROXY_GROUPS.TIKTOK}`,
 
-    // 奈飞规则
     `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,netflix.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflximg.net,${PROXY_GROUPS.NETFLIX}`,
@@ -55,7 +51,6 @@ const baseRules = [
     `DOMAIN-SUFFIX,nflxso.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.NETFLIX}`,
 
-    // 国内 AI 及 直连
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,yiyan.baidu.com,${PROXY_GROUPS.DIRECT}`,
@@ -66,18 +61,15 @@ const baseRules = [
     `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
     
-    // Telegram
     `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     
-    // 微软 AI
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bingapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,copilot.microsoft.com,${PROXY_GROUPS.SELECT}`,
 
-    // 常用代理服务
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,anthropic.com,${PROXY_GROUPS.SELECT}`,
@@ -87,8 +79,6 @@ const baseRules = [
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,binance.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,okx.com,${PROXY_GROUPS.SELECT}`,
-    
-    // 国内常用直连
     `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,jd.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,alipay.com,${PROXY_GROUPS.DIRECT}`,
@@ -114,20 +104,13 @@ function buildDnsConfig() {
         "prefer-h3": true,
         "direct-nameserver-follow-matching": false,
         "nameserver-policy": {
-            "+.lan": "223.5.5.5",
-            "+.local": "223.5.5.5",
-            "time.*.com": "223.5.5.5",
-            "ntp.*.com": "223.5.5.5",
-            "+.market.xiaomi.com": "223.5.5.5"
+            "+.lan": "223.5.5.5", "+.local": "223.5.5.5", "time.*.com": "223.5.5.5", "ntp.*.com": "223.5.5.5", "+.market.xiaomi.com": "223.5.5.5"
         },
         "default-nameserver": ["tls://223.5.5.5"],
         "proxy-server-nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
         "nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
         "fallback-filter": {
-            "geoip": true,
-            "geoip-code": "CN",
-            "ip-cidr": ["240.0.0.0/4", "0.0.0.0/32"],
-            "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]
+            "geoip": true, "geoip-code": "CN", "ip-cidr": ["240.0.0.0/4", "0.0.0.0/32"], "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]
         }
     };
 }
@@ -138,7 +121,6 @@ function buildProxyGroups(proxies, landing) {
     if (!proxies || proxies.length === 0) return [];
     
     const proxyNames = proxies.map(p => p.name);
-    // 过滤掉包含“落地”二字的节点
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
@@ -148,14 +130,11 @@ function buildProxyGroups(proxies, landing) {
     const twProxies = proxyNames.filter(n => /台|TW|Taiwan/i.test(n) && !n.includes("落地"));
 
     const regionGroups = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, PROXY_GROUPS.TW];
+    
+    // 01. 节点选择
     const mainProxies = landing 
         ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.MANUAL, ...regionGroups, "DIRECT"];
-
-    // 组合 非落地节点的列表（用于 手动、奈飞、TikTok）
-    const cleanOptions = [...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])];
-
-    // 01. 节点选择
     groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
 
     if (landing) {
@@ -169,17 +148,21 @@ function buildProxyGroups(proxies, landing) {
     groups.push({ name: PROXY_GROUPS.US, type: "select", proxies: usProxies.length ? usProxies : ["DIRECT"] });
     groups.push({ name: PROXY_GROUPS.TW, type: "select", proxies: twProxies.length ? twProxies : ["DIRECT"] });
 
-    // 08. 手动切换
-    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: cleanOptions });
+    // 08. 手动切换 (依然排除落地节点)
+    const manualOptions = [...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])];
+    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualOptions });
     
+    // 【核心修改点】以下三个分组现在包含所有节点（包括落地节点）
+    const allOptionsWithLanding = [...regionGroups, ...proxyNames];
+
     // 09. 电报消息
-    groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
+    groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: allOptionsWithLanding });
 
     // 12. 奈飞视频
-    groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: cleanOptions });
+    groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: allOptionsWithLanding });
 
-    // 13. TikTok (排除了落地节点)
-    groups.push({ name: PROXY_GROUPS.TIKTOK, type: "select", proxies: cleanOptions });
+    // 13. TikTok
+    groups.push({ name: PROXY_GROUPS.TIKTOK, type: "select", proxies: allOptionsWithLanding });
 
     // 10. 漏网之鱼 & 11. 全球直连
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
@@ -215,11 +198,7 @@ function main(e) {
         let startPort = 8000;
         finalProxies.forEach(proxy => {
             autoListeners.push({ 
-                name: `mixed-${startPort}`, 
-                type: "mixed", 
-                address: "0.0.0.0", 
-                port: startPort, 
-                proxy: proxy.name 
+                name: `mixed-${startPort}`, type: "mixed", address: "0.0.0.0", port: startPort, proxy: proxy.name 
             });
             startPort++;
         });
