@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞分组)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞 & TikTok 分组)
 */
 
 // ================= 1. 基础工具 =================
@@ -19,7 +19,8 @@ const PROXY_GROUPS = {
     TW:       "07. 台湾节点",
     MANUAL:   "08. 手动切换",
     TELEGRAM: "09. 电报消息",
-    NETFLIX:  "12. 奈飞视频", // 新增奈飞组
+    NETFLIX:  "12. 奈飞视频",
+    TIKTOK:   "13. TikTok",   // 新增 TikTok 组
     MATCH:    "10. 漏网之鱼",
     DIRECT:   "11. 全球直连",
     GLOBAL:   "GLOBAL" 
@@ -27,14 +28,24 @@ const PROXY_GROUPS = {
 
 // ================= 3. 规则配置 =================
 const baseRules = [
+    // 拦截 QUIC
     "AND,(DST-PORT,443),(NETWORK,udp),REJECT", 
     
+    // Google Play
     `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,googleapis.cn,${PROXY_GROUPS.SELECT}`, 
     `DOMAIN-KEYWORD,xn--ngstr-lra8j,${PROXY_GROUPS.SELECT}`,
+
+    // TikTok 规则
+    `DOMAIN-KEYWORD,tiktok,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,byteoversea.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,ibytedtos.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,ipstatp.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,muscdn.com,${PROXY_GROUPS.TIKTOK}`,
+    `DOMAIN-SUFFIX,musical.ly,${PROXY_GROUPS.TIKTOK}`,
 
     // 奈飞规则
     `DOMAIN-SUFFIX,netflix.com,${PROXY_GROUPS.NETFLIX}`,
@@ -44,6 +55,7 @@ const baseRules = [
     `DOMAIN-SUFFIX,nflxso.net,${PROXY_GROUPS.NETFLIX}`,
     `DOMAIN-SUFFIX,nflxext.com,${PROXY_GROUPS.NETFLIX}`,
 
+    // 国内 AI 及 直连
     `DOMAIN-SUFFIX,doubao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,volces.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,yiyan.baidu.com,${PROXY_GROUPS.DIRECT}`,
@@ -53,15 +65,19 @@ const baseRules = [
     `DOMAIN-SUFFIX,hunyuan.tencent.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
+    
+    // Telegram
     `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     
+    // 微软 AI
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bingapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,copilot.microsoft.com,${PROXY_GROUPS.SELECT}`,
 
+    // 常用代理服务
     `DOMAIN-SUFFIX,openai.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,chatgpt.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,anthropic.com,${PROXY_GROUPS.SELECT}`,
@@ -71,6 +87,8 @@ const baseRules = [
     `DOMAIN-SUFFIX,github.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,binance.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,okx.com,${PROXY_GROUPS.SELECT}`,
+    
+    // 国内常用直连
     `DOMAIN-SUFFIX,taobao.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,jd.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,alipay.com,${PROXY_GROUPS.DIRECT}`,
@@ -120,6 +138,7 @@ function buildProxyGroups(proxies, landing) {
     if (!proxies || proxies.length === 0) return [];
     
     const proxyNames = proxies.map(p => p.name);
+    // 过滤掉包含“落地”二字的节点
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
 
@@ -133,7 +152,7 @@ function buildProxyGroups(proxies, landing) {
         ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.MANUAL, ...regionGroups, "DIRECT"];
 
-    // 组合 手动切换/奈飞 的选项（排除落地节点）
+    // 组合 非落地节点的列表（用于 手动、奈飞、TikTok）
     const cleanOptions = [...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])];
 
     // 01. 节点选择
@@ -156,8 +175,11 @@ function buildProxyGroups(proxies, landing) {
     // 09. 电报消息
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: mainProxies });
 
-    // 12. 奈飞视频 (放在电报下面，排除落地节点)
+    // 12. 奈飞视频
     groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: cleanOptions });
+
+    // 13. TikTok (排除了落地节点)
+    groups.push({ name: PROXY_GROUPS.TIKTOK, type: "select", proxies: cleanOptions });
 
     // 10. 漏网之鱼 & 11. 全球直连
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
