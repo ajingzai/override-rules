@@ -3,18 +3,18 @@ Substore 订阅转换脚本 - 融合版 v3
 基于 powerfullz 原版规则集 + ajingzai 定制功能
 特性: 在线规则集 + DNS双模式 + Sniffer嗅探 + GeoData + 自动多端口监听 + 链式代理 + 防断流
 
-支持参数:
-- landing: 启用落地节点链式代理 (默认 false)
-- ipv6Enabled: 启用 IPv6 (默认 false)
-- fakeip: DNS 使用 FakeIP 模式 (默认 true, false 为 RedirHost)
-- quic: 允许 QUIC 流量 (默认 true)
+所有功能默认全开:
+- landing: 链式代理 (默认 true)
+- ipv6Enabled: IPv6 (默认 true)
+- fakeip: FakeIP 模式 (默认 true)
+- quic: QUIC 流量 (默认 true)
 */
 
 // ================= 1. 基础工具 =================
 function parseBool(val) { return typeof val === "boolean" ? val : (typeof val === "string" && (val.toLowerCase() === "true" || val === "1")); }
 const rawArgs = (typeof $arguments !== "undefined") ? $arguments : {};
-const landing = parseBool(rawArgs.landing);
-const ipv6Enabled = parseBool(rawArgs.ipv6Enabled) || false;
+const landing = rawArgs.landing !== undefined ? parseBool(rawArgs.landing) : true;
+const ipv6Enabled = rawArgs.ipv6Enabled !== undefined ? parseBool(rawArgs.ipv6Enabled) : true;
 const fakeIPEnabled = rawArgs.fakeip !== undefined ? parseBool(rawArgs.fakeip) : true;
 const quicEnabled = rawArgs.quic !== undefined ? parseBool(rawArgs.quic) : true;
 
