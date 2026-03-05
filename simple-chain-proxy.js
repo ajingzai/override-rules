@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 截图 DNS 版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞 & TikTok 包含落地版)
+powerfullz 的 Substore 订阅转换脚本 (监听端口增强 + 防断流修复版 + 4地区分组 + 前置代理严格限制 + 落地节点前置 + 奈飞 & TikTok 包含落地版)
 */
 
 // ================= 1. 基础工具 =================
@@ -29,7 +29,7 @@ const PROXY_GROUPS = {
 // ================= 3. 规则配置 =================
 const baseRules = [
     "AND,(DST-PORT,443),(NETWORK,udp),REJECT", 
-    
+
     `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`,
@@ -60,12 +60,12 @@ const baseRules = [
     `DOMAIN-SUFFIX,hunyuan.tencent.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,deepseek.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,cn,${PROXY_GROUPS.DIRECT}`,
-    
+
     `DOMAIN-SUFFIX,telegram.org,${PROXY_GROUPS.TELEGRAM}`,
     `DOMAIN-SUFFIX,t.me,${PROXY_GROUPS.TELEGRAM}`,
     `IP-CIDR,91.108.0.0/16,${PROXY_GROUPS.TELEGRAM},no-resolve`,
     `IP-CIDR,149.154.160.0/20,${PROXY_GROUPS.TELEGRAM},no-resolve`,
-    
+
     `DOMAIN-SUFFIX,bing.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,bingapis.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,copilot.microsoft.com,${PROXY_GROUPS.SELECT}`,
@@ -87,28 +87,49 @@ const baseRules = [
     `DOMAIN-SUFFIX,bilibili.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,apple.com,${PROXY_GROUPS.DIRECT}`,
     `DOMAIN-SUFFIX,microsoft.com,${PROXY_GROUPS.DIRECT}`,
-    
+
     `GEOSITE,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,CN,${PROXY_GROUPS.DIRECT}`,
     `GEOIP,PRIVATE,${PROXY_GROUPS.DIRECT}`,
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 =================
+// ================= 4. DNS 配置 (防断流修复版) =================
 function buildDnsConfig() {
     return {
         "enable": true,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "ipv6": false,
-        "prefer-h3": true,
+        "prefer-h3": false,
         "direct-nameserver-follow-matching": false,
+        "fake-ip-filter": [
+            "*.lan",
+            "*.local",
+            "localhost",
+            "*.msftconnecttest.com",
+            "*.msftncsi.com",
+            "dns.msftncsi.com",
+            "*.srv.nintendo.net",
+            "*.stun.playstation.net",
+            "xbox.*.microsoft.com",
+            "*.xboxlive.com",
+            "*.battlenet.com.cn",
+            "*.blzstatic.cn",
+            "time.*.com",
+            "ntp.*.com"
+        ],
         "nameserver-policy": {
             "+.lan": "223.5.5.5", "+.local": "223.5.5.5", "time.*.com": "223.5.5.5", "ntp.*.com": "223.5.5.5", "+.market.xiaomi.com": "223.5.5.5"
         },
         "default-nameserver": ["tls://223.5.5.5"],
         "proxy-server-nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
         "nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
+        "fallback": [
+            "https://1.1.1.1/dns-query",
+            "https://dns.google/dns-query",
+            "tls://8.8.4.4:853"
+        ],
         "fallback-filter": {
             "geoip": true, "geoip-code": "CN", "ip-cidr": ["240.0.0.0/4", "0.0.0.0/32"], "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]
         }
@@ -119,7 +140,7 @@ function buildDnsConfig() {
 function buildProxyGroups(proxies, landing) {
     const groups = [];
     if (!proxies || proxies.length === 0) return [];
-    
+
     const proxyNames = proxies.map(p => p.name);
     const frontProxies = proxyNames.filter(n => !n.includes("-> 前置"));
     const landingProxies = proxyNames.filter(n => n.includes("-> 前置"));
@@ -130,7 +151,7 @@ function buildProxyGroups(proxies, landing) {
     const twProxies = proxyNames.filter(n => /台|TW|Taiwan/i.test(n) && !n.includes("落地"));
 
     const regionGroups = [PROXY_GROUPS.HK, PROXY_GROUPS.JP, PROXY_GROUPS.US, PROXY_GROUPS.TW];
-    
+
     // 01. 节点选择
     const mainProxies = landing 
         ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
@@ -151,7 +172,7 @@ function buildProxyGroups(proxies, landing) {
     // 08. 手动切换 (依然排除落地节点)
     const manualOptions = [...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])];
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualOptions });
-    
+
     // 【核心修改点】以下三个分组现在包含所有节点（包括落地节点）
     const allOptionsWithLanding = [...regionGroups, ...proxyNames];
 
@@ -192,7 +213,7 @@ function main(e) {
             }
         });
 
-        if (finalProxies.length === 0) return e; 
+        if (finalProxies.length === 0) return e;
 
         const autoListeners = [];
         let startPort = 8000;
@@ -215,7 +236,13 @@ function main(e) {
             mode: "rule",
             "unified-delay": true,
             "tcp-concurrent": true,
+            "keep-alive-idle": 15,
+            "keep-alive-interval": 15,
             "global-client-fingerprint": "chrome",
+            "profile": {
+                "store-selected": true,
+                "store-fake-ip": true
+            },
             "listeners": autoListeners, 
             "proxy-groups": u,
             rules: baseRules,
