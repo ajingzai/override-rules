@@ -94,31 +94,15 @@ const baseRules = [
     `MATCH,${PROXY_GROUPS.MATCH}`
 ];
 
-// ================= 4. DNS 配置 (防断流修复版) =================
+// ================= 4. DNS 配置 (防断流修复版 v2) =================
 function buildDnsConfig() {
     return {
         "enable": true,
         "enhanced-mode": "fake-ip",
         "fake-ip-range": "198.18.0.1/16",
         "ipv6": false,
-        "prefer-h3": false,
+        "prefer-h3": true,
         "direct-nameserver-follow-matching": false,
-        "fake-ip-filter": [
-            "*.lan",
-            "*.local",
-            "localhost",
-            "*.msftconnecttest.com",
-            "*.msftncsi.com",
-            "dns.msftncsi.com",
-            "*.srv.nintendo.net",
-            "*.stun.playstation.net",
-            "xbox.*.microsoft.com",
-            "*.xboxlive.com",
-            "*.battlenet.com.cn",
-            "*.blzstatic.cn",
-            "time.*.com",
-            "ntp.*.com"
-        ],
         "nameserver-policy": {
             "+.lan": "223.5.5.5", "+.local": "223.5.5.5", "time.*.com": "223.5.5.5", "ntp.*.com": "223.5.5.5", "+.market.xiaomi.com": "223.5.5.5"
         },
