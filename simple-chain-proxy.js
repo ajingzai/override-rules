@@ -28,8 +28,6 @@ const PROXY_GROUPS = {
 
 // ================= 3. 规则配置 =================
 const baseRules = [
-    "AND,(DST-PORT,443),(NETWORK,udp),REJECT", 
-
     `DOMAIN-SUFFIX,gvt1.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt2.com,${PROXY_GROUPS.SELECT}`,
     `DOMAIN-SUFFIX,gvt3.com,${PROXY_GROUPS.SELECT}`,
