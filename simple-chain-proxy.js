@@ -50,7 +50,7 @@ const GROUP_ICONS = {
     HK: `${QURE_ICON_BASE}/Hong_Kong.png`,
     JP: `${QURE_ICON_BASE}/Japan.png`,
     US: `${QURE_ICON_BASE}/United_States.png`,
-    TW: `${QURE_ICON_BASE}/TW.png`,
+    TW: `${QURE_ICON_BASE}/Taiwan.png`,
     MANUAL: `${QURE_ICON_BASE}/Available.png`,
     TELEGRAM: `${QURE_ICON_BASE}/Telegram.png`,
     TIKTOK: `${QURE_ICON_BASE}/TikTok.png`,
