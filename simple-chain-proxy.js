@@ -20,20 +20,20 @@ const quicEnabled = rawArgs.quic !== undefined ? parseBool(rawArgs.quic) : true;
 
 // ================= 2. 核心组名定义 =================
 const PROXY_GROUPS = {
-    SELECT:   "01. 节点选择",
-    FRONT:    "02. 前置代理",
-    LANDING:  "03. 落地节点",
-    HK:       "04. 香港节点",
-    JP:       "05. 日本节点",
-    US:       "06. 美国节点",
-    TW:       "07. 台湾节点",
-    MANUAL:   "08. 手动切换",
-    TELEGRAM: "09. 电报消息",
-    MATCH:    "10. 漏网之鱼",
-    DIRECT:   "11. 全球直连",
-    NETFLIX:  "12. 奈飞视频",
-    TIKTOK:   "13. TikTok",
-    ADBLOCK:  "14. 广告拦截",
+    SELECT:   "节点选择",
+    FRONT:    "前置代理",
+    LANDING:  "落地节点",
+    HK:       "香港节点",
+    JP:       "日本节点",
+    US:       "美国节点",
+    TW:       "台湾节点",
+    MANUAL:   "手动切换",
+    TELEGRAM: "电报消息",
+    MATCH:    "漏网之鱼",
+    DIRECT:   "全球直连",
+    NETFLIX:  "奈飞视频",
+    TIKTOK:   "TikTok",
+    ADBLOCK:  "广告拦截",
     GLOBAL:   "GLOBAL"
 };
 
@@ -41,16 +41,35 @@ function unique(items) {
     return [...new Set(items)];
 }
 
-function getGroupOrder(name) {
-    const match = /^(\d+)\./.exec(name || "");
-    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+function createGroupIcon(label, background, foreground = "#ffffff") {
+    const safeLabel = String(label)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="${background}"/><text x="50%" y="53%" text-anchor="middle" dominant-baseline="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="${foreground}">${safeLabel}</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-function sortProxyGroups(groups) {
-    return [...groups].sort((a, b) => {
-        const orderDiff = getGroupOrder(a.name) - getGroupOrder(b.name);
-        return orderDiff !== 0 ? orderDiff : (a.name || "").localeCompare(b.name || "", "zh-Hans-CN");
-    });
+const GROUP_ICONS = {
+    SELECT: createGroupIcon("IN", "#2563eb"),
+    FRONT: createGroupIcon("FR", "#7c3aed"),
+    LANDING: createGroupIcon("LD", "#ea580c"),
+    HK: createGroupIcon("HK", "#dc2626"),
+    JP: createGroupIcon("JP", "#db2777"),
+    US: createGroupIcon("US", "#2563eb"),
+    TW: createGroupIcon("TW", "#0891b2"),
+    MANUAL: createGroupIcon("M", "#4f46e5"),
+    TELEGRAM: createGroupIcon("TG", "#0ea5e9"),
+    MATCH: createGroupIcon("ALL", "#475569"),
+    DIRECT: createGroupIcon("D", "#16a34a"),
+    NETFLIX: createGroupIcon("NF", "#b91c1c"),
+    TIKTOK: createGroupIcon("TT", "#111827"),
+    ADBLOCK: createGroupIcon("AD", "#334155"),
+    GLOBAL: createGroupIcon("G", "#0f766e")
+};
+
+function createGroup(name, proxies, iconKey) {
+    return { name, type: "select", proxies, icon: GROUP_ICONS[iconKey] };
 }
 
 // ================= 3. 在线规则集 (来自 powerfullz) =================
@@ -273,35 +292,35 @@ function buildProxyGroups(proxies, landing) {
     const mainProxies = landing
         ? [PROXY_GROUPS.MANUAL, ...regionGroups, PROXY_GROUPS.FRONT, PROXY_GROUPS.LANDING, "DIRECT"]
         : [PROXY_GROUPS.MANUAL, ...regionGroups, "DIRECT"];
-    groups.push({ name: PROXY_GROUPS.SELECT, type: "select", proxies: mainProxies });
+    groups.push(createGroup(PROXY_GROUPS.SELECT, mainProxies, "SELECT"));
 
     if (landing) {
-        groups.push({ name: PROXY_GROUPS.FRONT, type: "select", proxies: regionGroups.length ? regionGroups : ["DIRECT"] });
-        groups.push({ name: PROXY_GROUPS.LANDING, type: "select", proxies: landingProxies.length ? landingProxies : ["DIRECT"] });
+        groups.push(createGroup(PROXY_GROUPS.FRONT, regionGroups.length ? regionGroups : ["DIRECT"], "FRONT"));
+        groups.push(createGroup(PROXY_GROUPS.LANDING, landingProxies.length ? landingProxies : ["DIRECT"], "LANDING"));
     }
 
     // 04-07 地区分组
-    groups.push({ name: PROXY_GROUPS.HK, type: "select", proxies: hkProxies.length ? hkProxies : ["DIRECT"] });
-    groups.push({ name: PROXY_GROUPS.JP, type: "select", proxies: jpProxies.length ? jpProxies : ["DIRECT"] });
-    groups.push({ name: PROXY_GROUPS.US, type: "select", proxies: usProxies.length ? usProxies : ["DIRECT"] });
-    groups.push({ name: PROXY_GROUPS.TW, type: "select", proxies: twProxies.length ? twProxies : ["DIRECT"] });
+    groups.push(createGroup(PROXY_GROUPS.HK, hkProxies.length ? hkProxies : ["DIRECT"], "HK"));
+    groups.push(createGroup(PROXY_GROUPS.JP, jpProxies.length ? jpProxies : ["DIRECT"], "JP"));
+    groups.push(createGroup(PROXY_GROUPS.US, usProxies.length ? usProxies : ["DIRECT"], "US"));
+    groups.push(createGroup(PROXY_GROUPS.TW, twProxies.length ? twProxies : ["DIRECT"], "TW"));
 
     // 08. 手动切换
     const manualOptions = unique([...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])]);
-    groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualOptions });
+    groups.push(createGroup(PROXY_GROUPS.MANUAL, manualOptions, "MANUAL"));
 
     // 含落地节点的完整列表
     const allOptionsWithLanding = unique([...regionGroups, ...proxyNames]);
 
     // 09-14 功能分组，按编号顺序输出，避免客户端展示顺序错乱
-    groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: allOptionsWithLanding });
-    groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
-    groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
-    groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: allOptionsWithLanding });
-    groups.push({ name: PROXY_GROUPS.TIKTOK, type: "select", proxies: allOptionsWithLanding });
-    groups.push({ name: PROXY_GROUPS.ADBLOCK, type: "select", proxies: ["REJECT", "REJECT-DROP", "DIRECT"] });
+    groups.push(createGroup(PROXY_GROUPS.TELEGRAM, allOptionsWithLanding, "TELEGRAM"));
+    groups.push(createGroup(PROXY_GROUPS.MATCH, [PROXY_GROUPS.SELECT, "DIRECT"], "MATCH"));
+    groups.push(createGroup(PROXY_GROUPS.DIRECT, ["DIRECT", PROXY_GROUPS.SELECT], "DIRECT"));
+    groups.push(createGroup(PROXY_GROUPS.NETFLIX, allOptionsWithLanding, "NETFLIX"));
+    groups.push(createGroup(PROXY_GROUPS.TIKTOK, allOptionsWithLanding, "TIKTOK"));
+    groups.push(createGroup(PROXY_GROUPS.ADBLOCK, ["REJECT", "REJECT-DROP", "DIRECT"], "ADBLOCK"));
 
-    return sortProxyGroups(groups);
+    return groups;
 }
 
 // ================= 9. 主程序 =================
@@ -339,7 +358,7 @@ function main(e) {
 
         const u = buildProxyGroups(finalProxies, landing);
         const allProxyNames = finalProxies.map(p => p.name);
-        u.push({ name: "GLOBAL", type: "select", proxies: allProxyNames });
+        u.push(createGroup(PROXY_GROUPS.GLOBAL, allProxyNames, "GLOBAL"));
 
         return {
             proxies: finalProxies,
