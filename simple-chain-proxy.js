@@ -51,21 +51,21 @@ function createGroupIcon(label, background, foreground = "#ffffff") {
 }
 
 const GROUP_ICONS = {
-    SELECT: createGroupIcon("IN", "#2563eb"),
-    FRONT: createGroupIcon("FR", "#7c3aed"),
-    LANDING: createGroupIcon("LD", "#ea580c"),
-    HK: createGroupIcon("HK", "#dc2626"),
-    JP: createGroupIcon("JP", "#db2777"),
-    US: createGroupIcon("US", "#2563eb"),
-    TW: createGroupIcon("TW", "#0891b2"),
-    MANUAL: createGroupIcon("M", "#4f46e5"),
-    TELEGRAM: createGroupIcon("TG", "#0ea5e9"),
-    MATCH: createGroupIcon("ALL", "#475569"),
-    DIRECT: createGroupIcon("D", "#16a34a"),
-    NETFLIX: createGroupIcon("NF", "#b91c1c"),
-    TIKTOK: createGroupIcon("TT", "#111827"),
-    ADBLOCK: createGroupIcon("AD", "#334155"),
-    GLOBAL: createGroupIcon("G", "#0f766e")
+    SELECT: "https://api.iconify.design/material-symbols/hub-rounded.svg?color=%232563eb",
+    FRONT: "https://api.iconify.design/material-symbols/route-rounded.svg?color=%237c3aed",
+    LANDING: "https://api.iconify.design/material-symbols/flight-land-rounded.svg?color=%23ea580c",
+    HK: "https://api.iconify.design/circle-flags/hk.svg",
+    JP: "https://api.iconify.design/circle-flags/jp.svg",
+    US: "https://api.iconify.design/circle-flags/us.svg",
+    TW: "https://api.iconify.design/circle-flags/tw.svg",
+    MANUAL: "https://api.iconify.design/material-symbols/tune-rounded.svg?color=%234f46e5",
+    TELEGRAM: "https://api.iconify.design/logos/telegram.svg",
+    TIKTOK: "https://api.iconify.design/logos/tiktok-icon.svg",
+    NETFLIX: "https://api.iconify.design/logos/netflix-icon.svg",
+    MATCH: "https://api.iconify.design/material-symbols/travel-explore-rounded.svg?color=%23475569",
+    DIRECT: "https://api.iconify.design/material-symbols/language-rounded.svg?color=%2316a34a",
+    ADBLOCK: "https://api.iconify.design/material-symbols/block-rounded.svg?color=%23334155",
+    GLOBAL: "https://api.iconify.design/material-symbols/public-rounded.svg?color=%230f766e"
 };
 
 function createGroup(name, proxies, iconKey) {
@@ -312,12 +312,12 @@ function buildProxyGroups(proxies, landing) {
     // 含落地节点的完整列表
     const allOptionsWithLanding = unique([...regionGroups, ...proxyNames]);
 
-    // 09-14 功能分组，按编号顺序输出，避免客户端展示顺序错乱
+    // 功能分组，按 Clash Verge 更顺眼的展示顺序输出
     groups.push(createGroup(PROXY_GROUPS.TELEGRAM, allOptionsWithLanding, "TELEGRAM"));
+    groups.push(createGroup(PROXY_GROUPS.TIKTOK, allOptionsWithLanding, "TIKTOK"));
+    groups.push(createGroup(PROXY_GROUPS.NETFLIX, allOptionsWithLanding, "NETFLIX"));
     groups.push(createGroup(PROXY_GROUPS.MATCH, [PROXY_GROUPS.SELECT, "DIRECT"], "MATCH"));
     groups.push(createGroup(PROXY_GROUPS.DIRECT, ["DIRECT", PROXY_GROUPS.SELECT], "DIRECT"));
-    groups.push(createGroup(PROXY_GROUPS.NETFLIX, allOptionsWithLanding, "NETFLIX"));
-    groups.push(createGroup(PROXY_GROUPS.TIKTOK, allOptionsWithLanding, "TIKTOK"));
     groups.push(createGroup(PROXY_GROUPS.ADBLOCK, ["REJECT", "REJECT-DROP", "DIRECT"], "ADBLOCK"));
 
     return groups;
