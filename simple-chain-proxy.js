@@ -41,7 +41,7 @@ function unique(items) {
     return [...new Set(items)];
 }
 
-const QURE_ICON_BASE = "https://cdn.jsdelivr.net/gh/ajingzai/Qure@master/IconSet";
+const QURE_ICON_BASE = "https://cdn.jsdelivr.net/gh/ajingzai/Qure@master/IconSet/Color";
 
 const GROUP_ICONS = {
     SELECT: `${QURE_ICON_BASE}/Auto.png`,
