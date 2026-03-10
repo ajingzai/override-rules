@@ -37,6 +37,22 @@ const PROXY_GROUPS = {
     GLOBAL:   "GLOBAL"
 };
 
+function unique(items) {
+    return [...new Set(items)];
+}
+
+function getGroupOrder(name) {
+    const match = /^(\d+)\./.exec(name || "");
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function sortProxyGroups(groups) {
+    return [...groups].sort((a, b) => {
+        const orderDiff = getGroupOrder(a.name) - getGroupOrder(b.name);
+        return orderDiff !== 0 ? orderDiff : (a.name || "").localeCompare(b.name || "", "zh-Hans-CN");
+    });
+}
+
 // ================= 3. 在线规则集 (来自 powerfullz) =================
 const ruleProviders = {
     ADBlock: {
@@ -271,29 +287,21 @@ function buildProxyGroups(proxies, landing) {
     groups.push({ name: PROXY_GROUPS.TW, type: "select", proxies: twProxies.length ? twProxies : ["DIRECT"] });
 
     // 08. 手动切换
-    const manualOptions = [...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])];
+    const manualOptions = unique([...regionGroups, ...(frontProxies.length ? frontProxies : ["DIRECT"])]);
     groups.push({ name: PROXY_GROUPS.MANUAL, type: "select", proxies: manualOptions });
 
     // 含落地节点的完整列表
-    const allOptionsWithLanding = [...regionGroups, ...proxyNames];
+    const allOptionsWithLanding = unique([...regionGroups, ...proxyNames]);
 
-    // 09. 电报消息
+    // 09-14 功能分组，按编号顺序输出，避免客户端展示顺序错乱
     groups.push({ name: PROXY_GROUPS.TELEGRAM, type: "select", proxies: allOptionsWithLanding });
-
-    // 12. 奈飞视频
-    groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: allOptionsWithLanding });
-
-    // 13. TikTok
-    groups.push({ name: PROXY_GROUPS.TIKTOK, type: "select", proxies: allOptionsWithLanding });
-
-    // 10. 漏网之鱼 & 11. 全球直连
     groups.push({ name: PROXY_GROUPS.MATCH, type: "select", proxies: [PROXY_GROUPS.SELECT, "DIRECT"] });
     groups.push({ name: PROXY_GROUPS.DIRECT, type: "select", proxies: ["DIRECT", PROXY_GROUPS.SELECT] });
-
-    // 14. 广告拦截
+    groups.push({ name: PROXY_GROUPS.NETFLIX, type: "select", proxies: allOptionsWithLanding });
+    groups.push({ name: PROXY_GROUPS.TIKTOK, type: "select", proxies: allOptionsWithLanding });
     groups.push({ name: PROXY_GROUPS.ADBLOCK, type: "select", proxies: ["REJECT", "REJECT-DROP", "DIRECT"] });
 
-    return groups;
+    return sortProxyGroups(groups);
 }
 
 // ================= 9. 主程序 =================
