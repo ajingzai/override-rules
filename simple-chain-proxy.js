@@ -41,24 +41,24 @@ function unique(items) {
     return [...new Set(items)];
 }
 
-const WHATSIN_ICON_BASE = "https://raw.githubusercontent.com/ajingzai/WHATSINStash/main/icon";
+const QURE_ICON_BASE = "https://raw.githubusercontent.com/ajingzai/Qure/master/IconSet";
 
 const GROUP_ICONS = {
-    SELECT: `${WHATSIN_ICON_BASE}/urltest.png`,
-    FRONT: `${WHATSIN_ICON_BASE}/switch.png`,
-    LANDING: `${WHATSIN_ICON_BASE}/stashflight.png`,
-    HK: `${WHATSIN_ICON_BASE}/bigben.png`,
-    JP: `${WHATSIN_ICON_BASE}/torii.png`,
-    US: `${WHATSIN_ICON_BASE}/statueofliberty.png`,
-    TW: `${WHATSIN_ICON_BASE}/taipei101.png`,
-    MANUAL: `${WHATSIN_ICON_BASE}/switch.png`,
-    TELEGRAM: `${WHATSIN_ICON_BASE}/telegram.png`,
-    TIKTOK: `${WHATSIN_ICON_BASE}/tiktok.png`,
-    NETFLIX: `${WHATSIN_ICON_BASE}/youtube.png`,
-    MATCH: `${WHATSIN_ICON_BASE}/categoryballoon.png`,
-    DIRECT: `${WHATSIN_ICON_BASE}/warp.png`,
-    ADBLOCK: `${WHATSIN_ICON_BASE}/adguard.png`,
-    GLOBAL: `${WHATSIN_ICON_BASE}/whatsinstash.png`
+    SELECT: `${QURE_ICON_BASE}/Auto.png`,
+    FRONT: `${QURE_ICON_BASE}/Proxy.png`,
+    LANDING: `${QURE_ICON_BASE}/Airport.png`,
+    HK: `${QURE_ICON_BASE}/Hong_Kong.png`,
+    JP: `${QURE_ICON_BASE}/Japan.png`,
+    US: `${QURE_ICON_BASE}/United_States.png`,
+    TW: `${QURE_ICON_BASE}/TW.png`,
+    MANUAL: `${QURE_ICON_BASE}/Available.png`,
+    TELEGRAM: `${QURE_ICON_BASE}/Telegram.png`,
+    TIKTOK: `${QURE_ICON_BASE}/TikTok.png`,
+    NETFLIX: `${QURE_ICON_BASE}/Netflix.png`,
+    MATCH: `${QURE_ICON_BASE}/Final.png`,
+    DIRECT: `${QURE_ICON_BASE}/Direct.png`,
+    ADBLOCK: `${QURE_ICON_BASE}/AdBlack.png`,
+    GLOBAL: `${QURE_ICON_BASE}/Global.png`
 };
 
 function createGroup(name, proxies, iconKey) {
