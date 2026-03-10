@@ -51,8 +51,8 @@ function createGroupIcon(label, background, foreground = "#ffffff") {
 }
 
 const GROUP_ICONS = {
-    SELECT: "https://api.iconify.design/material-symbols/hub-rounded.svg?color=%232563eb",
-    FRONT: "https://api.iconify.design/material-symbols/route-rounded.svg?color=%237c3aed",
+    SELECT: "https://api.iconify.design/noto/compass.svg",
+    FRONT: "https://api.iconify.design/noto/link.svg",
     LANDING: "https://api.iconify.design/material-symbols/flight-land-rounded.svg?color=%23ea580c",
     HK: "https://api.iconify.design/circle-flags/hk.svg",
     JP: "https://api.iconify.design/circle-flags/jp.svg",
@@ -63,9 +63,9 @@ const GROUP_ICONS = {
     TIKTOK: "https://api.iconify.design/logos/tiktok-icon.svg",
     NETFLIX: "https://api.iconify.design/logos/netflix-icon.svg",
     MATCH: "https://api.iconify.design/material-symbols/travel-explore-rounded.svg?color=%23475569",
-    DIRECT: "https://api.iconify.design/material-symbols/language-rounded.svg?color=%2316a34a",
-    ADBLOCK: "https://api.iconify.design/material-symbols/block-rounded.svg?color=%23334155",
-    GLOBAL: "https://api.iconify.design/material-symbols/public-rounded.svg?color=%230f766e"
+    DIRECT: "https://api.iconify.design/noto/globe-showing-asia-australia.svg",
+    ADBLOCK: "https://api.iconify.design/noto/no-entry.svg",
+    GLOBAL: "https://api.iconify.design/noto/globe-showing-europe-africa.svg"
 };
 
 function createGroup(name, proxies, iconKey) {
