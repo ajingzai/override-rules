@@ -41,33 +41,24 @@ function unique(items) {
     return [...new Set(items)];
 }
 
-function createGroupIcon(label, background, foreground = "#ffffff") {
-    const safeLabel = String(label)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="${background}"/><text x="50%" y="53%" text-anchor="middle" dominant-baseline="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="${foreground}">${safeLabel}</text></svg>`;
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-const ICON_BASE = "https://raw.githubusercontent.com/ajingzai/override-rules/main/icons";
+const WHATSIN_ICON_BASE = "https://raw.githubusercontent.com/ajingzai/WHATSINStash/main/icon";
 
 const GROUP_ICONS = {
-    SELECT: `${ICON_BASE}/select.svg`,
-    FRONT: `${ICON_BASE}/front.svg`,
-    LANDING: `${ICON_BASE}/landing.svg`,
-    HK: `${ICON_BASE}/hk.svg`,
-    JP: `${ICON_BASE}/jp.svg`,
-    US: `${ICON_BASE}/us.svg`,
-    TW: `${ICON_BASE}/tw.svg`,
-    MANUAL: `${ICON_BASE}/manual.svg`,
-    TELEGRAM: `${ICON_BASE}/telegram.svg`,
-    TIKTOK: `${ICON_BASE}/tiktok.svg`,
-    NETFLIX: `${ICON_BASE}/netflix.svg`,
-    MATCH: `${ICON_BASE}/match.svg`,
-    DIRECT: `${ICON_BASE}/direct.svg`,
-    ADBLOCK: `${ICON_BASE}/adblock.svg`,
-    GLOBAL: `${ICON_BASE}/global.svg`
+    SELECT: `${WHATSIN_ICON_BASE}/urltest.png`,
+    FRONT: `${WHATSIN_ICON_BASE}/switch.png`,
+    LANDING: `${WHATSIN_ICON_BASE}/stashflight.png`,
+    HK: `${WHATSIN_ICON_BASE}/bigben.png`,
+    JP: `${WHATSIN_ICON_BASE}/torii.png`,
+    US: `${WHATSIN_ICON_BASE}/statueofliberty.png`,
+    TW: `${WHATSIN_ICON_BASE}/taipei101.png`,
+    MANUAL: `${WHATSIN_ICON_BASE}/switch.png`,
+    TELEGRAM: `${WHATSIN_ICON_BASE}/telegram.png`,
+    TIKTOK: `${WHATSIN_ICON_BASE}/tiktok.png`,
+    NETFLIX: `${WHATSIN_ICON_BASE}/youtube.png`,
+    MATCH: `${WHATSIN_ICON_BASE}/categoryballoon.png`,
+    DIRECT: `${WHATSIN_ICON_BASE}/warp.png`,
+    ADBLOCK: `${WHATSIN_ICON_BASE}/adguard.png`,
+    GLOBAL: `${WHATSIN_ICON_BASE}/whatsinstash.png`
 };
 
 function createGroup(name, proxies, iconKey) {
