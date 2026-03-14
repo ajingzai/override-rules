@@ -41,24 +41,27 @@ function unique(items) {
     return [...new Set(items)];
 }
 
+// 只修图标缓存：统一追加版本号，强制 Clash 客户端刷新旧图标缓存。
+const ICON_CACHE_VERSION = "20260314-1";
 const QURE_ICON_BASE = "https://cdn.jsdelivr.net/gh/ajingzai/Qure@master/IconSet/Color";
+const withIconVersion = (iconName) => `${QURE_ICON_BASE}/${iconName}?v=${ICON_CACHE_VERSION}`;
 
 const GROUP_ICONS = {
-    SELECT: `${QURE_ICON_BASE}/Auto.png`,
-    FRONT: `${QURE_ICON_BASE}/Proxy.png`,
-    LANDING: `${QURE_ICON_BASE}/Airport.png`,
-    HK: `${QURE_ICON_BASE}/Hong_Kong.png`,
-    JP: `${QURE_ICON_BASE}/Japan.png`,
-    US: `${QURE_ICON_BASE}/United_States.png`,
-    TW: `${QURE_ICON_BASE}/Taiwan.png`,
-    MANUAL: `${QURE_ICON_BASE}/Available.png`,
-    TELEGRAM: `${QURE_ICON_BASE}/Telegram.png`,
-    TIKTOK: `${QURE_ICON_BASE}/TikTok.png`,
-    NETFLIX: `${QURE_ICON_BASE}/Netflix.png`,
-    MATCH: `${QURE_ICON_BASE}/Final.png`,
-    DIRECT: `${QURE_ICON_BASE}/Direct.png`,
-    ADBLOCK: `${QURE_ICON_BASE}/AdBlack.png`,
-    GLOBAL: `${QURE_ICON_BASE}/Global.png`
+    SELECT: withIconVersion("Auto.png"),
+    FRONT: withIconVersion("Proxy.png"),
+    LANDING: withIconVersion("Airport.png"),
+    HK: withIconVersion("Hong_Kong.png"),
+    JP: withIconVersion("Japan.png"),
+    US: withIconVersion("United_States.png"),
+    TW: withIconVersion("Taiwan.png"),
+    MANUAL: withIconVersion("Available.png"),
+    TELEGRAM: withIconVersion("Telegram.png"),
+    TIKTOK: withIconVersion("TikTok.png"),
+    NETFLIX: withIconVersion("Netflix.png"),
+    MATCH: withIconVersion("Final.png"),
+    DIRECT: withIconVersion("Direct.png"),
+    ADBLOCK: withIconVersion("AdBlack.png"),
+    GLOBAL: withIconVersion("Global.png")
 };
 
 function createGroup(name, proxies, iconKey) {
