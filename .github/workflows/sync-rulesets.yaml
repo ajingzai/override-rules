@@ -1,0 +1,44 @@
+name: Sync Rulesets
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync-rulesets:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync upstream rulesets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ruleset
+
+          curl -fsSL "https://adrules.top/adrules-mihomo.mrs" -o "ruleset/ADBlock.mrs"
+          curl -fsSL "https://ruleset.skk.moe/Clash/non_ip/sogouinput.txt" -o "ruleset/SogouInput.txt"
+          curl -fsSL "https://ruleset.skk.moe/Clash/domainset/cdn.txt" -o "ruleset/StaticResources.txt"
+          curl -fsSL "https://ruleset.skk.moe/Clash/non_ip/cdn.txt" -o "ruleset/CDNResources.txt"
+
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/TikTok.list" -o "ruleset/TikTok.list"
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/EHentai.list" -o "ruleset/EHentai.list"
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/SteamFix.list" -o "ruleset/SteamFix.list"
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/FirebaseCloudMessaging.list" -o "ruleset/FirebaseCloudMessaging.list"
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalFilter.list" -o "ruleset/AdditionalFilter.list"
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/AdditionalCDNResources.list" -o "ruleset/AdditionalCDNResources.list"
+          curl -fsSL "https://gcore.jsdelivr.net/gh/powerfullz/override-rules@master/ruleset/Crypto.list" -o "ruleset/Crypto.list"
+
+      - name: Commit ruleset updates
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "CI: Sync ruleset files"
+          file_pattern: ruleset/*
