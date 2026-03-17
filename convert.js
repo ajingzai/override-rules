@@ -524,7 +524,7 @@ function buildCountryProxyGroups({ countries, landing, loadBalance, regexFilter,
     const groups = [];
     const baseExcludeFilter = "0\\.[0-5]|低倍率|省流|大流量|实验性";
     const landingExcludeFilter = LANDING_PATTERN;
-    const groupType = loadBalance ? "load-balance" : "url-test";
+    const groupType = "select";
 
     /**
      * 枚举模式（`regexFilter=false`）下预先建立"地区 → 节点名列表"的索引，
@@ -570,14 +570,7 @@ function buildCountryProxyGroups({ countries, landing, loadBalance, regexFilter,
             };
         }
 
-        if (!loadBalance) {
-            Object.assign(groupConfig, {
-                url: "https://cp.cloudflare.com/generate_204",
-                interval: 60,
-                tolerance: 20,
-                lazy: false,
-            });
-        }
+
 
         groups.push(groupConfig);
     }
