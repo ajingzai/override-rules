@@ -654,6 +654,7 @@ function buildProxyGroups({
                       : { proxies: landingNodes }),
               }
             : null,
+        ...countryProxyGroups,
         {
             name: PROXY_GROUPS.FALLBACK,
             icon: "https://gcore.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Bypass.png",
@@ -802,7 +803,6 @@ function buildProxyGroups({
                       : { "include-all": true, filter: "(?i)0\\.[0-5]|低倍率|省流|大流量|实验性" }),
               }
             : null,
-        ...countryProxyGroups,
     ].filter(Boolean);
 }
 
