@@ -1,5 +1,5 @@
 /*!
-powerfullz 的 Substore 订阅转换脚本1
+powerfullz 的 Substore 订阅转换脚本
 https://github.com/powerfullz/override-rules
 
 支持的传入参数：
@@ -263,9 +263,6 @@ const baseRules = [
     `RULE-SET,AdditionalFilter,广告拦截`,
     `RULE-SET,SogouInput,搜狗输入法`,
     `DOMAIN-SUFFIX,truthsocial.com,Truth Social`,
-    `DOMAIN,sub2.xian995.dpdns.org,DIRECT`,
-    `DOMAIN,new.xian995.dpdns.org,DIRECT`,
-    `DOMAIN,cli.xian995.dpdns.org,DIRECT`,
     `RULE-SET,StaticResources,静态资源`,
     `RULE-SET,CDNResources,静态资源`,
     `RULE-SET,AdditionalCDNResources,静态资源`,
